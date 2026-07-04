@@ -94,6 +94,29 @@ npm run build
 
 This bundles `plugin.js` via esbuild into the `dist/` directory.
 
+## GitHub Backup (fork feature)
+
+GitHub push/pull is the primary workspace backup/restore mechanism in this fork,
+because it works everywhere the plugin runs — including the Thymer desktop app,
+where the File System Access folder picker is not wired up by the Electron shell.
+
+- **Settings → GitHub Backup**: set repository (`owner/name`), branch, and file path.
+  The PAT (Settings → GitHub Access) needs **read/write Contents** permission on that
+  repository. Keep the repository **private** — backups contain full plugin configs.
+- **Auto-push**: with "Auto-Backup Workspace on Changes" enabled and a repository set,
+  every plugin/collection/theme change commits the backup JSON to GitHub (debounced;
+  identical content is skipped, which also dedupes multiple open clients). Git history
+  doubles as backup versioning — every backup is a commit.
+- **Restore from GitHub**: fetches the configured file and prefills the normal restore
+  dialog (Full Override works there; it now uses a two-click confirm because
+  `window.confirm` is suppressed in the plugin sandbox).
+- **Credential hygiene**: `custom.githubPat` is redacted from backup payloads, so the
+  token never leaves the workspace inside a backup artifact. After a rewind or on a
+  fresh workspace, re-paste the PAT once, then Restore from GitHub.
+- The folder/download destinations still exist and apply only when no repository is
+  configured. Note the folder picker's `confirm()` fallback remains broken in the
+  sandbox (upstream bug) — moot with GitHub as primary.
+
 ---
 
 ## Fork notice

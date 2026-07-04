@@ -42,6 +42,11 @@ class Plugin extends AppPlugin {
         this._autoExportDirName = localStorage.getItem('pm_auto_export_dir_name') || '';
         this._autoExportMode = localStorage.getItem('pm_auto_export_mode') || ''; // 'fsaccess' | 'download' | ''
         this._autoExportCaps = this._detectAutoExportCaps();
+        // GitHub backup (fork feature) — when a repo is configured it becomes the
+        // primary auto-backup destination. Stored in config (synced), not localStorage.
+        this._ghBackupRepo = (conf?.custom?.gh_backup_repo || '').trim();
+        this._ghBackupBranch = (conf?.custom?.gh_backup_branch || 'main').trim() || 'main';
+        this._ghBackupPath = (conf?.custom?.gh_backup_path || '').trim() || 'thymer-workspace-backup.json';
         // Restore directory handle from IndexedDB (browser File System Access API)
         this._restoreAutoExportHandle();
 
@@ -378,9 +383,33 @@ class Plugin extends AppPlugin {
                                 <div class="pm-tab-actions pm-settings-actions">
                                     <button type="button" class="pm-btn primary" id="pm-export-workspace-btn">Backup Workspace</button>
                                     <button type="button" class="pm-btn" id="pm-import-workspace-btn">Restore Workspace</button>
+                                    <button type="button" class="pm-btn" id="pm-restore-github-btn">Restore from GitHub</button>
                                     <button type="button" class="pm-btn" id="pm-export-workspace-themes-btn">Backup Theme CSS</button>
                                 </div>
                                 <div id="pm-workspace-summary" class="pm-settings-summary"></div>
+                            </div>
+
+                            <div class="pm-settings-section">
+                                <h3>GitHub Backup</h3>
+                                <p class="pm-settings-help">
+                                    Primary backup destination: when a repository is set, automatic backups are
+                                    committed there via the GitHub API (works in the desktop app and the browser —
+                                    no folder picker needed). Requires the PAT above to have read/write Contents
+                                    permission on the repository. Keep the repository private: backups contain
+                                    full plugin configurations.
+                                </p>
+                                <div class="pm-input-group">
+                                    <label>Repository (owner/name)</label>
+                                    <input type="text" id="pm-gh-repo-input" class="pm-input" placeholder="user/thymer-backups" value="${this._escHtml(this._ghBackupRepo)}">
+                                </div>
+                                <div class="pm-input-group">
+                                    <label>Branch</label>
+                                    <input type="text" id="pm-gh-branch-input" class="pm-input" placeholder="main" value="${this._escHtml(this._ghBackupBranch)}">
+                                </div>
+                                <div class="pm-input-group">
+                                    <label>File path</label>
+                                    <input type="text" id="pm-gh-path-input" class="pm-input" placeholder="thymer-workspace-backup.json" value="${this._escHtml(this._ghBackupPath)}">
+                                </div>
                             </div>
 
                             <div class="pm-settings-section">
@@ -585,7 +614,10 @@ class Plugin extends AppPlugin {
             const pat = container.querySelector('#pm-pat-input').value.trim();
             const repos = container.querySelector('#pm-repos-input').value.trim();
             const autoExport = container.querySelector('#pm-auto-export-toggle').checked;
-            await this._saveManagerSettings({ githubPat: pat, communityRepos: repos, autoExportEnabled: autoExport });
+            const ghRepo = container.querySelector('#pm-gh-repo-input').value.trim();
+            const ghBranch = container.querySelector('#pm-gh-branch-input').value.trim();
+            const ghPath = container.querySelector('#pm-gh-path-input').value.trim();
+            await this._saveManagerSettings({ githubPat: pat, communityRepos: repos, autoExportEnabled: autoExport, ghBackupRepo: ghRepo, ghBackupBranch: ghBranch, ghBackupPath: ghPath });
             this._renderWorkspaceSummary(container);
 
             this.ui.addToaster({ title: "Settings Saved", dismissible: true, autoDestroyTime: 3000 });
@@ -594,6 +626,24 @@ class Plugin extends AppPlugin {
         // Auto-export directory / destination picker (adapts to environment)
         container.querySelector('#pm-auto-export-dir-btn').addEventListener('click', async () => {
             await this._chooseAutoExportTarget(container);
+        });
+
+        // Restore workspace backup straight from the configured GitHub repository:
+        // fetch the JSON, then reuse the normal import dialog (prefilled) so Full
+        // Override and the result summary behave identically to a manual restore.
+        container.querySelector('#pm-restore-github-btn').addEventListener('click', async (ev) => {
+            const btn = ev.currentTarget;
+            try {
+                btn.disabled = true;
+                const jsonStr = await this._fetchBackupFromGithub();
+                await this.showImportDialog(container, 'all');
+                const ta = document.getElementById('pm-import-textarea');
+                if (ta) ta.value = jsonStr;
+            } catch (e) {
+                this.ui.addToaster({ title: 'GitHub Restore Failed', message: e.message, autoDestroyTime: 6000, dismissible: true });
+            } finally {
+                btn.disabled = false;
+            }
         });
 
 
@@ -671,6 +721,18 @@ class Plugin extends AppPlugin {
             conf.custom.auto_export_enabled = !!overrides.autoExportEnabled;
             localStorage.setItem('pm_auto_export', this._autoExportEnabled ? 'true' : 'false');
         }
+        if (overrides.ghBackupRepo !== undefined) {
+            this._ghBackupRepo = String(overrides.ghBackupRepo || '').trim();
+            conf.custom.gh_backup_repo = this._ghBackupRepo;
+        }
+        if (overrides.ghBackupBranch !== undefined) {
+            this._ghBackupBranch = String(overrides.ghBackupBranch || '').trim() || 'main';
+            conf.custom.gh_backup_branch = this._ghBackupBranch;
+        }
+        if (overrides.ghBackupPath !== undefined) {
+            this._ghBackupPath = String(overrides.ghBackupPath || '').trim() || 'thymer-workspace-backup.json';
+            conf.custom.gh_backup_path = this._ghBackupPath;
+        }
 
         try {
             const plugin = this.data.getPluginByGuid(this.getGuid());
@@ -695,6 +757,8 @@ class Plugin extends AppPlugin {
             let autoBackupState;
             if (!this._autoExportEnabled) {
                 autoBackupState = 'Auto-backup is disabled';
+            } else if (this._ghBackupRepo) {
+                autoBackupState = `Auto-backup is enabled → GitHub (${this._ghBackupRepo})`;
             } else if (this._autoExportMode === 'download' || (!this._autoExportCaps.hasFSAccess && !this._autoExportDirHandle)) {
                 autoBackupState = this._autoExportMode === 'download'
                     ? 'Auto-backup is enabled (downloads on each change)'
@@ -1905,6 +1969,9 @@ class Plugin extends AppPlugin {
                 const { json, code, css } = p.getExistingCodeAndConfig();
                 const liveConfig = typeof p.getConfiguration === 'function' ? p.getConfiguration() : null;
                 const mergedJson = this._getBackupConfigSnapshot(json, liveConfig);
+                // Never let a PAT leave the workspace inside a backup artifact
+                // (the manager's own config carries custom.githubPat).
+                if (mergedJson.custom && mergedJson.custom.githubPat) mergedJson.custom.githubPat = '';
                 return { name: mergedJson.name, type: 'plugin', version: mergedJson.version, source_repo: mergedJson.__source_repo, code, css, json: mergedJson };
             } catch (e) { return null; }
         });
@@ -1958,7 +2025,11 @@ class Plugin extends AppPlugin {
             communityRepos: this.communityRepos || '',
             savedThemes: this._cloneJsonValue(Array.isArray(this._savedThemes) ? this._savedThemes : []),
             autoExportEnabled: !!this._autoExportEnabled,
-            autoExportDirName: this._autoExportDirName || ''
+            autoExportDirName: this._autoExportDirName || '',
+            // PAT deliberately excluded — backups must never carry credentials.
+            ghBackupRepo: this._ghBackupRepo || '',
+            ghBackupBranch: this._ghBackupBranch || 'main',
+            ghBackupPath: this._ghBackupPath || 'thymer-workspace-backup.json'
         };
     }
 
@@ -1999,7 +2070,10 @@ class Plugin extends AppPlugin {
         await this._saveManagerSettings({
             communityRepos: typeof managerSettings.communityRepos === 'string' ? managerSettings.communityRepos : undefined,
             savedThemes: Array.isArray(managerSettings.savedThemes) ? managerSettings.savedThemes : undefined,
-            autoExportEnabled: typeof managerSettings.autoExportEnabled === 'boolean' ? managerSettings.autoExportEnabled : undefined
+            autoExportEnabled: typeof managerSettings.autoExportEnabled === 'boolean' ? managerSettings.autoExportEnabled : undefined,
+            ghBackupRepo: typeof managerSettings.ghBackupRepo === 'string' ? managerSettings.ghBackupRepo : undefined,
+            ghBackupBranch: typeof managerSettings.ghBackupBranch === 'string' ? managerSettings.ghBackupBranch : undefined,
+            ghBackupPath: typeof managerSettings.ghBackupPath === 'string' ? managerSettings.ghBackupPath : undefined
         });
 
         if (typeof managerSettings.autoExportDirName === 'string') {
@@ -2133,6 +2207,18 @@ class Plugin extends AppPlugin {
             const filename = this._getBackupJsonFilename('all');
             const mode = this._autoExportMode || (this._autoExportDirHandle ? 'fsaccess' : '');
 
+            // GitHub is the primary destination when configured — plain fetch works in
+            // every client (desktop included), unlike the FS Access folder picker.
+            if (this._ghBackupRepo) {
+                const out = await this._pushBackupToGithub(jsonStr);
+                if (out && out.skipped) {
+                    console.log('[Plugins Manager] Auto-backup: GitHub copy already up to date.');
+                } else {
+                    console.log(`[Plugins Manager] Auto-backup committed to ${this._ghBackupRepo}${out && out.commit ? ' @ ' + out.commit.slice(0, 7) : ''}`);
+                }
+                return;
+            }
+
             if (mode === 'fsaccess' && this._autoExportDirHandle) {
                 const perm = await this._autoExportDirHandle.requestPermission({ mode: 'readwrite' });
                 if (perm !== 'granted') {
@@ -2160,6 +2246,97 @@ class Plugin extends AppPlugin {
         }
     }
 
+    // ── GitHub backup (fork feature) ─────────────────────────────────────────────
+    // Push/pull the workspace backup JSON via the GitHub Contents API. Plain fetch
+    // works from the plugin sandbox in every client — no File System Access API.
+    // Every push is a commit, so git history doubles as backup versioning.
+
+    _ghBackupTarget() {
+        const repo = (this._ghBackupRepo || '').trim();
+        if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Set a GitHub repository (owner/name) in Settings → GitHub Backup.');
+        if (!this.githubPat) throw new Error('GitHub backup needs a Personal Access Token with read/write Contents permission on the backup repository.');
+        const branch = (this._ghBackupBranch || 'main').trim() || 'main';
+        const path = ((this._ghBackupPath || '').trim() || 'thymer-workspace-backup.json').replace(/^\/+/, '');
+        const url = `https://api.github.com/repos/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+        return { repo, branch, path, url };
+    }
+
+    _ghBackupHeaders() {
+        return {
+            'Authorization': `Bearer ${this.githubPat}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'X-GitHub-Api-Version': '2022-11-28'
+        };
+    }
+
+    _b64EncodeUtf8(str) {
+        const bytes = new TextEncoder().encode(str);
+        let bin = '';
+        const CHUNK = 0x8000; // avoid arg-spread stack limits on big backups
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        }
+        return btoa(bin);
+    }
+
+    _b64DecodeUtf8(b64) {
+        const bin = atob(String(b64).replace(/\s+/g, ''));
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder().decode(bytes);
+    }
+
+    /** Read the current backup file; {sha:null, content:null} when it doesn't exist yet. */
+    async _ghReadBackupFile() {
+        const { branch, url } = this._ghBackupTarget();
+        const res = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, { headers: this._ghBackupHeaders() });
+        if (res.status === 404) return { sha: null, content: null };
+        if (!res.ok) throw new Error(`GitHub read failed (${res.status}) — check repository, branch, and PAT permissions.`);
+        const j = await res.json();
+        // Contents API inlines content only up to ~1 MB; refetch raw for bigger backups.
+        if (j.sha && !(j.content || '').trim()) {
+            const raw = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, {
+                headers: { ...this._ghBackupHeaders(), 'Accept': 'application/vnd.github.v3.raw' }
+            });
+            if (raw.ok) return { sha: j.sha, content: await raw.text() };
+        }
+        return { sha: j.sha || null, content: j.content ? this._b64DecodeUtf8(j.content) : null };
+    }
+
+    async _pushBackupToGithub(jsonStr) {
+        const { repo, branch, url } = this._ghBackupTarget();
+        for (let attempt = 0; ; attempt++) {
+            const existing = await this._ghReadBackupFile();
+            // Identical content → skip. Also dedupes when several open clients react
+            // to the same synced change: the first push wins, the rest no-op.
+            if (existing.content !== null && existing.content === jsonStr) return { skipped: true };
+            const body = {
+                message: `thymer backup ${new Date().toISOString()} (${this._getWorkspaceName()})`,
+                content: this._b64EncodeUtf8(jsonStr),
+                branch
+            };
+            if (existing.sha) body.sha = existing.sha;
+            const res = await fetch(url, { method: 'PUT', headers: this._ghBackupHeaders(), body: JSON.stringify(body) });
+            if (res.ok) {
+                const j = await res.json();
+                return { commit: (j && j.commit && j.commit.sha) || null };
+            }
+            // 409/422 → our sha raced another client's push; refetch once and retry.
+            if ((res.status === 409 || res.status === 422) && attempt < 1) continue;
+            throw new Error(`GitHub push failed (${res.status}) to ${repo} — check the PAT has read/write Contents permission.`);
+        }
+    }
+
+    /** Fetch the backup JSON from the configured repo (used by Restore from GitHub). */
+    async _fetchBackupFromGithub() {
+        const existing = await this._ghReadBackupFile();
+        if (existing.content === null) {
+            const { repo, path } = this._ghBackupTarget();
+            throw new Error(`No backup found at ${repo}/${path}. Push one first (any plugin change with auto-backup on, or Backup Workspace + commit manually).`);
+        }
+        return existing.content;
+    }
+
     /** Detect available auto-export destinations in this runtime. */
     _detectAutoExportCaps() {
         const caps = { hasFSAccess: false, canDownload: true };
@@ -2170,6 +2347,7 @@ class Plugin extends AppPlugin {
     }
 
     _autoExportDestinationLabel() {
+        if (this._ghBackupRepo) return '⬆ GitHub: ' + this._ghBackupRepo;
         if (this._autoExportMode === 'fsaccess' && this._autoExportDirName) return '📁 ' + this._autoExportDirName;
         if (this._autoExportMode === 'download') return '⬇ Downloads folder (per-change)';
         // Legacy state: dir name saved but mode not set → treat as fsaccess
@@ -2178,6 +2356,9 @@ class Plugin extends AppPlugin {
     }
 
     _autoExportModeHint() {
+        if (this._ghBackupRepo) {
+            return 'Backups are committed to the GitHub repository on each change (primary). The folder/download destination applies only if the repository is cleared.';
+        }
         if (this._autoExportCaps.hasFSAccess) {
             return 'Backups are written directly to the chosen folder.';
         }
@@ -3224,11 +3405,20 @@ class Plugin extends AppPlugin {
             if (!val) return;
 
             const isFullOverride = document.getElementById('pm-import-full-override').checked;
-            if (isFullOverride) {
-                if (!confirm(`WARNING: Full Override will delete existing ${sectionMeta.warningLabel} that are NOT in this backup. This cannot be undone. Are you sure?`)) {
-                    return;
-                }
+            // window.confirm() is suppressed inside the plugin sandbox (returns false
+            // without displaying), so use a two-click arm instead of a dialog.
+            if (isFullOverride && !this._fullOverrideArmed) {
+                this._fullOverrideArmed = true;
+                const confirmBtn = document.getElementById('pm-import-confirm');
+                confirmBtn.innerText = `Click again to DELETE ${sectionMeta.warningLabel} not in backup`;
+                setTimeout(() => {
+                    this._fullOverrideArmed = false;
+                    const b = document.getElementById('pm-import-confirm');
+                    if (b) b.innerText = 'Import';
+                }, 8000);
+                return;
             }
+            this._fullOverrideArmed = false;
 
             document.getElementById('pm-import-confirm').innerText = "Restoring...";
             document.getElementById('pm-import-confirm').disabled = true;

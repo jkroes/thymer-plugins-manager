@@ -3,14 +3,17 @@
     "type": "plugin",
     "name": "Plugins Manager",
     "icon": "box",
-    "version": "1.4.0-fork.0",
+    "version": "1.5.0-fork.1",
     "__source_repo": "https://github.com/jkroes/thymer-plugins-manager",
-    "description": "Install, update, import and export Thymer plugins from GitHub or local files.",
+    "description": "Install, update, import and export Thymer plugins. Fork: GitHub push/pull is the primary workspace backup/restore mechanism (Contents API; works in the desktop app).",
     "permissions": [
         "global_plugins",
         "collections"
     ],
     "custom": {
-        "githubPat": ""
+        "githubPat": "",
+        "gh_backup_repo": "",
+        "gh_backup_branch": "main",
+        "gh_backup_path": "thymer-workspace-backup.json"
     }
 }
