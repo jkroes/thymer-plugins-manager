@@ -1,0 +1,852 @@
+.pm-container,
+.pm-modal {
+    /* Map to Thymer's standard theme variables with dark mode fallbacks */
+    --pm-bg-default: var(--cards-bg, var(--color-bg-600, light-dark(#f9f9f9, #1e1e1e)));
+    --pm-bg-hover: var(--cards-hover-bg, var(--hover-subtle, light-dark(#f0f0f0, #2a2a2a)));
+    --pm-bg-subtle: var(--sidepanel-bg-color, var(--color-bg-700, rgba(127, 127, 127, 0.08)));
+    --pm-border-default: var(--cards-border-color, var(--input-border-color, light-dark(#e0e0e0, #333)));
+    --pm-text-color: var(--cards-fg, inherit);
+    --pm-text-muted: var(--text-subtle, var(--ed-gray-text, light-dark(#666, #999)));
+    --pm-input-bg: var(--color-bg-600, light-dark(#ffffff, #1e1e1e));
+    --pm-modal-bg: var(--modal-opaque-bg-color, var(--cards-bg, var(--color-bg-600, light-dark(#ffffff, #151515))));
+    --pm-overlay-bg: rgba(0, 0, 0, 0.55);
+    /* Theme-aware shadow: defer to Thymer's card shadow when present, else a soft layered shadow */
+    --pm-shadow-card: var(--cards-shadow, 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 6px rgba(0, 0, 0, 0.06));
+    --pm-shadow-modal: var(--modal-shadow, 0 10px 30px rgba(0, 0, 0, 0.18));
+    /* Accent + semantic colors. Use *-fg tokens for text-on-card; *-bg for fills only. */
+    --pm-accent: var(--color-primary-600, var(--button-primary-bg-color, var(--select-bg-color, var(--enum-blue-bg, #3b82f6))));
+    --pm-accent-contrast: var(--button-primary-fg-color, var(--color-primary-text-100, #ffffff));
+    --pm-link: var(--color-primary-600, var(--link-button-bg, var(--pm-accent)));
+    --pm-success: var(--enum-green-bg, #10b981);
+    --pm-success-fg: var(--enum-green-fg, var(--pm-success));
+    --pm-warning: var(--enum-orange-bg, #f59e0b);
+    --pm-warning-fg: var(--enum-orange-fg, var(--pm-warning));
+    --pm-danger: var(--enum-red-bg, #ef4444);
+    --pm-danger-fg: var(--enum-red-fg, var(--pm-danger));
+    --pm-update: var(--enum-purple-bg, #8b5cf6);
+    --pm-update-fg: var(--enum-purple-fg, var(--pm-update));
+    --pm-focus-ring: var(--focus-outline-color, var(--color-primary-600, var(--pm-accent)));
+}
+
+.pm-hidden {
+    display: none !important;
+}
+
+/*
+ * Instant tooltip rendered to <body>. Uses an always-dark surface so it stays
+ * legible on every theme (cream, light, dark, etc.). The container's --pm-*
+ * tokens aren't available here since the tooltip lives outside .pm-container.
+ */
+.pm-tooltip {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    background: rgba(28, 28, 30, 0.96);
+    color: #f5f5f7;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 5px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-family, inherit);
+    line-height: 1.3;
+    max-width: 280px;
+    white-space: normal;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+    /* small fade-in so showing isn't jarring, but still effectively instant */
+    animation: pm-tooltip-fade 80ms ease-out;
+}
+
+@keyframes pm-tooltip-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.pm-container {
+    padding: 20px;
+    max-width: 900px;
+    margin: 0 auto;
+    font-family: var(--font-family, inherit);
+    color: var(--pm-text-color);
+    color-scheme: light dark;
+}
+
+.pm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.pm-header h1 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.2;
+    min-width: 0;
+}
+
+.pm-btn-check-updates {
+    margin-left: auto;
+    gap: 6px;
+}
+
+.pm-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    font-family: 'tabler-icons', inherit;
+    font-size: 14px;
+}
+
+.pm-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--pm-border-default);
+    margin-bottom: 20px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pm-border-default) transparent;
+}
+
+.pm-tabs::-webkit-scrollbar {
+    height: 6px;
+}
+
+.pm-tabs::-webkit-scrollbar-thumb {
+    background: var(--pm-border-default);
+    border-radius: 3px;
+}
+
+.pm-tab {
+    padding: 10px 20px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+    color: var(--pm-text-muted);
+    white-space: nowrap;
+    /* Don't let flex shrink the tab below its label width — .pm-tabs scrolls instead. */
+    flex-shrink: 0;
+}
+
+.pm-tab:hover {
+    color: var(--pm-text-color);
+}
+
+.pm-tab.active {
+    border-bottom-color: var(--pm-text-color);
+    color: var(--pm-text-color);
+}
+
+.pm-tab-content {
+    display: none;
+}
+
+.pm-tab-content.active {
+    display: block;
+}
+
+.pm-tab-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.pm-tab-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.pm-tab-actions-primary {
+    flex: 1 1 420px;
+}
+
+.pm-tab-actions-secondary {
+    justify-content: flex-end;
+    flex: 0 1 auto;
+}
+
+.pm-list-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+    /* Allow grid cells to shrink below their content's intrinsic width so cards never overflow the panel. */
+    min-width: 0;
+}
+
+.pm-list-container > * {
+    min-width: 0;
+}
+
+/* Wide panel: expand to multi-column cards. Use a clamp so cards reflow gracefully. */
+.pm-container.wide .pm-list-container {
+    grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+}
+
+.pm-card {
+    background: var(--pm-bg-default);
+    border: 1px solid var(--pm-border-default);
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-start;
+    height: auto;
+    min-height: auto;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: var(--pm-shadow-card);
+    overflow: hidden;
+}
+
+.pm-card-info {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/*
+ * Title row: keep title text on one line with ellipsis, but allow trailing
+ * badges to wrap to a new line if the card is too narrow to fit them inline.
+ */
+.pm-card-info h3 {
+    margin: 0 0 5px 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.pm-card-info h3 .pm-badge {
+    flex-shrink: 0;
+}
+
+.pm-card-info p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--pm-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/*
+ * Source URL row inside a card. Override the parent <p>'s -webkit-box clamp
+ * so long URLs wrap normally instead of forcing the card to overflow.
+ */
+.pm-card-url-row {
+    margin-top: 5px !important;
+    font-size: 11px;
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    line-clamp: unset !important;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+
+.pm-card-url {
+    color: var(--pm-link);
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--pm-link) 50%, transparent);
+    text-underline-offset: 2px;
+    word-break: break-all;
+}
+
+.pm-card-url:hover {
+    text-decoration-color: var(--pm-link);
+    color: var(--pm-link);
+}
+
+/* Generic small caption text used for card metadata. */
+.pm-meta-text {
+    margin: 8px 0 0 !important;
+    font-size: 12px;
+    color: var(--pm-text-muted);
+}
+
+.pm-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    margin-top: 10px;
+}
+
+.pm-btn {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--pm-border-default);
+    background: var(--pm-bg-default);
+    color: inherit;
+    cursor: pointer;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: inherit;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.pm-btn:hover {
+    background: var(--pm-bg-hover);
+}
+
+/* Suppress default focus styling; use a clean ring on keyboard focus only. */
+.pm-btn:focus,
+.pm-tab:focus,
+.pm-filter-chip:focus,
+.pm-input:focus,
+.pm-textarea:focus {
+    outline: none;
+}
+
+.pm-btn:focus-visible,
+.pm-tab:focus-visible,
+.pm-filter-chip:focus-visible,
+.pm-input:focus-visible,
+.pm-textarea:focus-visible {
+    outline: 2px solid var(--pm-focus-ring);
+    outline-offset: 2px;
+}
+
+.pm-btn.primary {
+    background: color-mix(in srgb, var(--pm-accent) 14%, var(--pm-bg-default));
+    color: var(--pm-link);
+    border-color: color-mix(in srgb, var(--pm-accent) 40%, var(--pm-border-default));
+    font-weight: 600;
+}
+
+.pm-btn.primary:hover {
+    background: color-mix(in srgb, var(--pm-accent) 22%, var(--pm-bg-default));
+    border-color: color-mix(in srgb, var(--pm-accent) 60%, var(--pm-border-default));
+}
+
+.pm-btn.danger {
+    color: var(--pm-danger-fg);
+    border-color: color-mix(in srgb, var(--pm-danger) 35%, var(--pm-border-default));
+    background: transparent;
+}
+
+.pm-btn.danger:hover {
+    background: color-mix(in srgb, var(--pm-danger) 16%, var(--pm-bg-default));
+    border-color: color-mix(in srgb, var(--pm-danger) 50%, var(--pm-border-default));
+    color: var(--pm-danger-fg);
+}
+
+.pm-btn.pm-btn-update {
+    background: color-mix(in srgb, var(--pm-update) 12%, var(--pm-bg-default));
+    color: var(--pm-text-color);
+    border-color: color-mix(in srgb, var(--pm-update) 35%, var(--pm-border-default));
+}
+
+.pm-btn.pm-btn-update:hover {
+    background: color-mix(in srgb, var(--pm-update) 22%, var(--pm-bg-hover));
+    border-color: color-mix(in srgb, var(--pm-update) 50%, var(--pm-border-default));
+}
+
+/* Reinstall: subtle success-tinted action, not a saturated fill. */
+.pm-btn.pm-btn-reinstall {
+    background: color-mix(in srgb, var(--pm-success) 14%, var(--pm-bg-default));
+    color: var(--pm-text-color);
+    border-color: color-mix(in srgb, var(--pm-success) 40%, var(--pm-border-default));
+}
+
+.pm-btn.pm-btn-reinstall:hover {
+    background: color-mix(in srgb, var(--pm-success) 26%, var(--pm-bg-hover));
+    border-color: color-mix(in srgb, var(--pm-success) 55%, var(--pm-border-default));
+}
+
+.pm-btn.pm-btn-delete {
+    color: var(--pm-text-muted);
+    border-color: var(--pm-border-default);
+    background: transparent;
+}
+
+.pm-btn.pm-btn-delete:hover {
+    background: color-mix(in srgb, var(--pm-danger) 16%, var(--pm-bg-default));
+    color: var(--pm-danger-fg);
+    border-color: color-mix(in srgb, var(--pm-danger) 50%, var(--pm-border-default));
+}
+
+.pm-state-icon {
+    font-size: 13px;
+    line-height: 1;
+    font-weight: 700;
+}
+
+/* Disable button (currently enabled): outlined with success-colored dot. */
+.pm-btn.pm-btn-disable {
+    background: var(--pm-bg-default);
+    color: var(--pm-text-color);
+    border-color: color-mix(in srgb, var(--pm-success) 35%, var(--pm-border-default));
+}
+
+.pm-btn.pm-btn-disable .pm-state-icon {
+    color: var(--pm-success-fg);
+    text-shadow: 0 0 0 currentColor;
+}
+
+.pm-btn.pm-btn-disable:hover {
+    background: color-mix(in srgb, var(--pm-success) 14%, var(--pm-bg-hover));
+    border-color: color-mix(in srgb, var(--pm-success) 50%, var(--pm-border-default));
+}
+
+/* Enable button (currently disabled): muted outlined; warning tint on hover. */
+.pm-btn.pm-btn-enable {
+    color: var(--pm-text-muted);
+    border-color: var(--pm-border-default);
+    background: transparent;
+}
+
+.pm-btn.pm-btn-enable .pm-state-icon {
+    color: var(--pm-text-muted);
+}
+
+.pm-btn.pm-btn-enable:hover {
+    background: color-mix(in srgb, var(--pm-warning) 16%, var(--pm-bg-default));
+    color: var(--pm-warning-fg);
+    border-color: color-mix(in srgb, var(--pm-warning) 50%, var(--pm-border-default));
+}
+
+.pm-btn.pm-btn-enable:hover .pm-state-icon {
+    color: var(--pm-warning-fg);
+}
+
+.pm-card.pm-card-disabled {
+    border-style: dashed;
+    opacity: 0.9;
+}
+
+.pm-btn:disabled .pm-state-icon {
+    opacity: 0.5;
+}
+
+.pm-input-group {
+    margin-bottom: 15px;
+}
+
+.pm-input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.pm-input-group-flush {
+    margin-bottom: 0;
+}
+
+.pm-settings-card {
+    height: auto;
+    gap: 18px;
+}
+
+.pm-settings-form {
+    width: 100%;
+    margin: 0;
+}
+
+.pm-settings-help-tight {
+    margin: 8px 0;
+}
+
+.pm-settings-help-flush {
+    margin: 0;
+}
+
+.pm-settings-hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.pm-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--pm-border-default);
+    border-radius: 4px;
+    background: var(--pm-input-bg);
+    color: inherit;
+}
+
+.pm-textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--pm-border-default);
+    border-radius: 4px;
+    background: var(--pm-input-bg);
+    color: inherit;
+    min-height: 100px;
+    font-family: monospace;
+}
+
+.pm-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    background: var(--pm-bg-hover);
+    border: 1px solid var(--pm-border-default);
+    white-space: nowrap;
+}
+
+.pm-badge.update {
+    background: color-mix(in srgb, var(--pm-update) 18%, var(--pm-bg-default));
+    color: var(--pm-update-fg);
+    border-color: color-mix(in srgb, var(--pm-update) 45%, var(--pm-border-default));
+    font-weight: 600;
+}
+
+.pm-card-upgradeable {
+    border-color: color-mix(in srgb, var(--pm-update) 45%, var(--pm-border-default));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--pm-update) 15%, transparent), var(--pm-shadow-card);
+    position: relative;
+    overflow: hidden;
+}
+
+.pm-card-upgradeable::after {
+    content: "UPDATE";
+    position: absolute;
+    top: 7px;
+    right: -28px;
+    background: #5b21b6;
+    color: #ede9fe;
+    font-size: 9px;
+    font-weight: 900;
+    width: 100px;
+    text-align: center;
+    padding: 2px 0;
+    transform: rotate(45deg);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.pm-badge-plugin {
+    background: color-mix(in srgb, var(--pm-accent) 14%, transparent);
+    color: var(--pm-accent);
+    border-color: color-mix(in srgb, var(--pm-accent) 30%, var(--pm-border-default));
+}
+
+.pm-badge-collection {
+    background: color-mix(in srgb, var(--pm-update) 14%, transparent);
+    color: var(--pm-update);
+    border-color: color-mix(in srgb, var(--pm-update) 30%, var(--pm-border-default));
+}
+
+.pm-badge-theme {
+    background: color-mix(in srgb, var(--pm-warning) 14%, transparent);
+    color: var(--pm-warning);
+    border-color: color-mix(in srgb, var(--pm-warning) 30%, var(--pm-border-default));
+}
+
+.pm-search-input {
+    flex: 1;
+    min-width: 160px;
+    max-width: 300px;
+}
+
+.pm-filter-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.pm-filter-chip {
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--pm-border-default);
+    background: transparent;
+    color: var(--pm-text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.pm-filter-chip:hover {
+    background: var(--pm-bg-hover);
+    color: var(--pm-text-color);
+}
+
+.pm-filter-chip.active {
+    background: color-mix(in srgb, var(--pm-accent) 14%, var(--pm-bg-default));
+    color: var(--pm-text-color);
+    border-color: color-mix(in srgb, var(--pm-accent) 35%, var(--pm-border-default));
+}
+
+.pm-empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    background: var(--pm-bg-subtle);
+}
+
+.pm-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--pm-overlay-bg);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+}
+
+.pm-modal-content {
+    background: var(--pm-modal-bg);
+    padding: 20px;
+    border-radius: 8px;
+    width: 500px;
+    max-width: 90%;
+    border: 1px solid var(--pm-border-default);
+    box-shadow: var(--pm-shadow-modal);
+}
+
+.pm-export-content {
+    width: 600px;
+}
+
+.pm-modal-link-row {
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.pm-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.pm-settings-section {
+    background: var(--pm-bg-subtle);
+    border: 1px solid var(--pm-border-default);
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.pm-settings-section h3 {
+    margin: 0 0 10px 0;
+    font-size: 15px;
+}
+
+.pm-settings-help {
+    font-size: 13px;
+    color: var(--pm-text-muted);
+    margin: 0 0 10px 0;
+}
+
+.pm-settings-actions {
+    margin-bottom: 0;
+}
+
+.pm-settings-summary {
+    margin-top: 14px;
+}
+
+.pm-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 10px;
+}
+
+.pm-summary-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--pm-border-default);
+    background: var(--pm-bg-default);
+}
+
+.pm-summary-card strong {
+    font-size: 18px;
+    line-height: 1.1;
+}
+
+.pm-summary-card span {
+    font-size: 12px;
+    color: var(--pm-text-muted);
+}
+
+.pm-summary-note {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--pm-text-muted);
+}
+
+.pm-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-bottom: 0;
+}
+
+.pm-inline-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.pm-settings-footer {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.pm-textarea-urls {
+    min-height: 80px;
+}
+
+.pm-textarea-json {
+    min-height: 100px;
+    font-size: 10px;
+}
+
+/* === Responsive === */
+
+/*
+ * Default (wide enough): show text labels in tabs. Icons stay hidden.
+ * The horizontal scroll on .pm-tabs handles edge-case overflow gracefully.
+ */
+.pm-tab .pm-tab-icon {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.pm-tab .pm-tab-label {
+    display: inline;
+}
+
+/* Header button: hide icon when label is shown. */
+.pm-btn-check-updates .pm-btn-icon {
+    display: none;
+}
+
+/* Compact panels (<760px): collapse the header CTA to its icon to make room. */
+.pm-container.compact .pm-btn-check-updates .pm-btn-label {
+    display: none;
+}
+
+.pm-container.compact .pm-btn-check-updates .pm-btn-icon {
+    display: inline-flex;
+}
+
+.pm-container.compact .pm-header h1 {
+    font-size: 20px;
+}
+
+/* Compact panels: tighter tab padding so all 5 labels fit before scroll kicks in. */
+.pm-container.compact .pm-tab {
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+/*
+ * Narrow panels (<520px): collapse tabs to two-tone icons. Active tab gets the
+ * accent color while inactive tabs use the muted text color, giving a clean
+ * two-tone interaction with Thymer's native Tabler icons.
+ */
+.pm-container.narrow .pm-tab {
+    padding: 10px 12px;
+}
+
+.pm-container.narrow .pm-tab .pm-tab-label {
+    display: none;
+}
+
+.pm-container.narrow .pm-tab .pm-tab-icon {
+    display: inline-flex;
+    color: var(--pm-text-muted);
+    transition: color 0.12s ease;
+}
+
+.pm-container.narrow .pm-tab:hover .pm-tab-icon {
+    color: var(--pm-text-color);
+}
+
+.pm-container.narrow .pm-tab.active .pm-tab-icon {
+    color: var(--pm-link);
+}
+
+/* Make Tabler icon SVGs scale with the surrounding text. */
+.pm-tab-icon svg,
+.pm-btn-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+}
+
+/* Single-column override for narrow panels */
+.pm-container.narrow .pm-list-container {
+    grid-template-columns: 1fr;
+}
+
+/* Narrow panel: tighter action bar */
+.pm-container.narrow .pm-tab-toolbar {
+    gap: 8px;
+}
+
+.pm-container.narrow .pm-tab-actions {
+    gap: 6px;
+}
+
+.pm-container.narrow .pm-tab-actions-secondary {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.pm-container.narrow .pm-settings-section {
+    padding: 12px;
+}
+
+.pm-container.narrow .pm-btn {
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+/* Narrow panel: tighter card padding + smaller title so content has room. */
+.pm-container.narrow .pm-card {
+    padding: 12px;
+}
+
+.pm-container.narrow .pm-card-info h3 {
+    font-size: 14px;
+}
+
+/* The diagonal UPDATE ribbon competes with content on tiny cards; downscale. */
+.pm-container.narrow .pm-card-upgradeable::after {
+    font-size: 8px;
+    width: 80px;
+    right: -24px;
+    top: 5px;
+}
