@@ -69,18 +69,17 @@ Click the **Plugins Manager** icon in your left statusbar or from the Command Pa
 | **Collections** | Manage collection-specific plugins. Same actions as Plugins. |
 | **Themes** | Manage your Theme Library. Save themes from GitHub URLs or manual paste, and export a combined CSS block. |
 | **Discover** | Browse community plugins and themes. Search, filter, install, or preview. |
-| **Settings** | Configure GitHub PAT, community repo URLs, and auto-export preferences. |
+| **Settings** | Configure GitHub PAT, community repo URLs, and the GitHub backup repository. |
 
 ### Settings
 
 - **GitHub PAT** (Optional): Provide a Personal Access Token to increase API rate limits when managing many plugins or allow you to pull from your private repos.
 - **Community Repositories**: List of raw Markdown URLs pointing to community plugin/theme directories.
-- **Auto-Export**: Toggle automatic backup on every plugin change. Choose a local directory using the browser's directory picker.
+- **GitHub Backup**: repository / branch / file path for automatic backups (always on; see below).
 
 ## Browser Compatibility
 
-- **Chrome / Edge**: Full support including Auto-Export (File System Access API flag must be enabled).
-- **Firefox / Safari**: All features except Auto-Export (File System Access API not available).
+Backups use plain `fetch` against the GitHub API, so they work in every runtime — the Thymer desktop app included.
 
 ## Development
 
@@ -103,10 +102,11 @@ where the File System Access folder picker is not wired up by the Electron shell
 - **Settings → GitHub Backup**: set repository (`owner/name`), branch, and file path.
   The PAT (Settings → GitHub Access) needs **read/write Contents** permission on that
   repository. Keep the repository **private** — backups contain full plugin configs.
-- **Auto-push**: with "Auto-Backup Workspace on Changes" enabled and a repository set,
-  every plugin/collection/theme change commits the backup JSON to GitHub (debounced;
-  identical content is skipped, which also dedupes multiple open clients). Git history
-  doubles as backup versioning — every backup is a commit.
+- **Auto-push (always on)**: every plugin/collection/theme change commits the backup
+  JSON to GitHub (debounced; identical content is skipped, which also dedupes multiple
+  open clients). Git history doubles as backup versioning — every backup is a commit.
+  There is no toggle, no manual backup button, and no file-based backup/restore —
+  GitHub is the only pathway (this fork removed the folder-picker/download code).
 - **Restore from GitHub**: lists the backup file's commit history so you pick a
   day/time to restore from (latest first, "Load older…" pages back 50 at a time
   through the full history), then prefills the normal restore dialog
@@ -115,9 +115,8 @@ where the File System Access folder picker is not wired up by the Electron shell
 - **Credential hygiene**: `custom.githubPat` is redacted from backup payloads, so the
   token never leaves the workspace inside a backup artifact. After a rewind or on a
   fresh workspace, re-paste the PAT once, then Restore from GitHub.
-- The folder/download destinations still exist and apply only when no repository is
-  configured. Note the folder picker's `confirm()` fallback remains broken in the
-  sandbox (upstream bug) — moot with GitHub as primary.
+- Upstream's folder-picker/auto-download destinations, manual "Backup Workspace"
+  button, and backup-file upload were removed entirely in this fork.
 
 ---
 

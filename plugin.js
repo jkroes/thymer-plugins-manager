@@ -35,20 +35,11 @@ class Plugin extends AppPlugin {
         }
 
         this._savedThemes = savedThemes || [];
-        this._autoExportEnabled = typeof conf?.custom?.auto_export_enabled === 'boolean'
-            ? conf.custom.auto_export_enabled
-            : localStorage.getItem('pm_auto_export') === 'true';
-        this._autoExportDirHandle = null;
-        this._autoExportDirName = localStorage.getItem('pm_auto_export_dir_name') || '';
-        this._autoExportMode = localStorage.getItem('pm_auto_export_mode') || ''; // 'fsaccess' | 'download' | ''
-        this._autoExportCaps = this._detectAutoExportCaps();
-        // GitHub backup (fork feature) — when a repo is configured it becomes the
-        // primary auto-backup destination. Stored in config (synced), not localStorage.
+        // GitHub backup (fork feature) — backups are always on and always go to
+        // GitHub. Config (synced) holds the repo/branch/path; the PAT authenticates.
         this._ghBackupRepo = (conf?.custom?.gh_backup_repo || '').trim();
         this._ghBackupBranch = (conf?.custom?.gh_backup_branch || 'main').trim() || 'main';
         this._ghBackupPath = (conf?.custom?.gh_backup_path || '').trim() || 'thymer-workspace-backup.json';
-        // Restore directory handle from IndexedDB (browser File System Access API)
-        this._restoreAutoExportHandle();
 
         // One-time migration: normalize pm_updates_available entries to {name, version}
         try {
@@ -378,13 +369,12 @@ class Plugin extends AppPlugin {
                             <div class="pm-settings-section">
                                 <h3>Workspace Backup &amp; Restore</h3>
                                 <p class="pm-settings-help">
-                                    Create a single backup for plugins, collections, theme library, and Plugins Manager settings, or restore that backup into a new workspace.
+                                    Backups are automatic: every plugin, collection, or theme change commits a full
+                                    workspace backup (plugins, collections, theme library, Plugins Manager settings)
+                                    to the GitHub repository below. Restore pulls any backup version from that history.
                                 </p>
                                 <div class="pm-tab-actions pm-settings-actions">
-                                    <button type="button" class="pm-btn primary" id="pm-export-workspace-btn">Backup Workspace</button>
-                                    <button type="button" class="pm-btn" id="pm-import-workspace-btn">Restore Workspace</button>
-                                    <button type="button" class="pm-btn" id="pm-restore-github-btn">Restore from GitHub</button>
-                                    <button type="button" class="pm-btn" id="pm-export-workspace-themes-btn">Backup Theme CSS</button>
+                                    <button type="button" class="pm-btn primary" id="pm-restore-github-btn">Restore from GitHub</button>
                                 </div>
                                 <div id="pm-workspace-summary" class="pm-settings-summary"></div>
                             </div>
@@ -392,11 +382,10 @@ class Plugin extends AppPlugin {
                             <div class="pm-settings-section">
                                 <h3>GitHub Backup</h3>
                                 <p class="pm-settings-help">
-                                    Primary backup destination: when a repository is set, automatic backups are
-                                    committed there via the GitHub API (works in the desktop app and the browser —
-                                    no folder picker needed). Requires the PAT above to have read/write Contents
-                                    permission on the repository. Keep the repository private: backups contain
-                                    full plugin configurations.
+                                    Committed via the GitHub API — works in the desktop app and the browser.
+                                    Requires the PAT above to have read/write Contents permission on the
+                                    repository. Keep the repository private: backups contain full plugin
+                                    configurations.
                                 </p>
                                 <div class="pm-input-group">
                                     <label>Repository (owner/name)</label>
@@ -412,21 +401,6 @@ class Plugin extends AppPlugin {
                                 </div>
                             </div>
 
-                            <div class="pm-settings-section">
-                                <h3>Automatic Backups</h3>
-                                <label class="pm-checkbox-row">
-                                    <input type="checkbox" id="pm-auto-export-toggle" ${this._autoExportEnabled ? 'checked' : ''} />
-                                    Auto-Backup Workspace on Changes
-                                </label>
-                                <p class="pm-settings-help pm-settings-help-tight">
-                                    Automatically save a full workspace backup whenever plugins, collections, or themes change.
-                                </p>
-                                <div class="pm-inline-row">
-                                    <button type="button" class="pm-btn" id="pm-auto-export-dir-btn">${this._autoExportCaps.hasFSAccess ? 'Choose Directory' : 'Choose Destination'}</button>
-                                    <span id="pm-auto-export-dir-label" class="pm-settings-help pm-settings-help-flush">${this._escHtml(this._autoExportDestinationLabel())}</span>
-                                </div>
-                                <p class="pm-settings-help pm-settings-hint" id="pm-auto-export-mode-help">${this._escHtml(this._autoExportModeHint())}</p>
-                            </div>
 
                             <div class="pm-settings-footer">
                                 <button type="button" class="pm-btn primary" id="pm-save-settings">Save Settings</button>
@@ -613,19 +587,13 @@ class Plugin extends AppPlugin {
         container.querySelector('#pm-save-settings').addEventListener('click', async () => {
             const pat = container.querySelector('#pm-pat-input').value.trim();
             const repos = container.querySelector('#pm-repos-input').value.trim();
-            const autoExport = container.querySelector('#pm-auto-export-toggle').checked;
             const ghRepo = container.querySelector('#pm-gh-repo-input').value.trim();
             const ghBranch = container.querySelector('#pm-gh-branch-input').value.trim();
             const ghPath = container.querySelector('#pm-gh-path-input').value.trim();
-            await this._saveManagerSettings({ githubPat: pat, communityRepos: repos, autoExportEnabled: autoExport, ghBackupRepo: ghRepo, ghBackupBranch: ghBranch, ghBackupPath: ghPath });
+            await this._saveManagerSettings({ githubPat: pat, communityRepos: repos, ghBackupRepo: ghRepo, ghBackupBranch: ghBranch, ghBackupPath: ghPath });
             this._renderWorkspaceSummary(container);
 
             this.ui.addToaster({ title: "Settings Saved", dismissible: true, autoDestroyTime: 3000 });
-        });
-
-        // Auto-export directory / destination picker (adapts to environment)
-        container.querySelector('#pm-auto-export-dir-btn').addEventListener('click', async () => {
-            await this._chooseAutoExportTarget(container);
         });
 
         // Restore workspace backup straight from the configured GitHub repository:
@@ -681,9 +649,6 @@ class Plugin extends AppPlugin {
         container.querySelector('#pm-export-col-btn').addEventListener('click', () => this.showExportDialog('collection'));
         container.querySelector('#pm-check-updates-col-btn').addEventListener('click', () => this._manualCheckForUpdates(container, 'collection'));
         container.querySelector('#pm-update-all-col-btn').addEventListener('click', () => this._updateAllAvailable(container, 'collection'));
-        container.querySelector('#pm-export-workspace-btn').addEventListener('click', () => this.showExportDialog('all'));
-        container.querySelector('#pm-import-workspace-btn').addEventListener('click', () => this.showImportDialog(container, 'all'));
-        container.querySelector('#pm-export-workspace-themes-btn').addEventListener('click', () => this._exportAllThemes());
 
         // Delegated handler for external links (replaces <a target="_blank"> which is blocked in some environments)
         container.addEventListener('click', (e) => {
@@ -712,11 +677,6 @@ class Plugin extends AppPlugin {
         if (overrides.savedThemes !== undefined) {
             this._savedThemes = this._cloneJsonValue(Array.isArray(overrides.savedThemes) ? overrides.savedThemes : []);
             conf.custom.saved_themes = this._savedThemes;
-        }
-        if (overrides.autoExportEnabled !== undefined) {
-            this._autoExportEnabled = !!overrides.autoExportEnabled;
-            conf.custom.auto_export_enabled = !!overrides.autoExportEnabled;
-            localStorage.setItem('pm_auto_export', this._autoExportEnabled ? 'true' : 'false');
         }
         if (overrides.ghBackupRepo !== undefined) {
             this._ghBackupRepo = String(overrides.ghBackupRepo || '').trim();
@@ -751,20 +711,9 @@ class Plugin extends AppPlugin {
             const allGlobals = await this.data.getAllGlobalPlugins();
             const allCollections = await this.data.getAllCollections();
             const themeCount = Array.isArray(this._savedThemes) ? this._savedThemes.length : 0;
-            let autoBackupState;
-            if (!this._autoExportEnabled) {
-                autoBackupState = 'Auto-backup is disabled';
-            } else if (this._ghBackupRepo) {
-                autoBackupState = `Auto-backup is enabled → GitHub (${this._ghBackupRepo})`;
-            } else if (this._autoExportMode === 'download' || (!this._autoExportCaps.hasFSAccess && !this._autoExportDirHandle)) {
-                autoBackupState = this._autoExportMode === 'download'
-                    ? 'Auto-backup is enabled (downloads on each change)'
-                    : 'Auto-backup is enabled but needs a destination to be selected';
-            } else if (this._autoExportDirHandle) {
-                autoBackupState = `Auto-backup is enabled${this._autoExportDirName ? ` for ${this._autoExportDirName}` : ''}`;
-            } else {
-                autoBackupState = 'Auto-backup is enabled but needs a directory to be re-selected';
-            }
+            const autoBackupState = this._ghBackupRepo
+                ? `Auto-backup → GitHub (${this._ghBackupRepo})`
+                : 'Auto-backup inactive — set a repository under GitHub Backup below';
             summaryEl.innerHTML = `
                 <div class="pm-summary-grid">
                     <div class="pm-summary-card">
@@ -2021,8 +1970,6 @@ class Plugin extends AppPlugin {
         return {
             communityRepos: this.communityRepos || '',
             savedThemes: this._cloneJsonValue(Array.isArray(this._savedThemes) ? this._savedThemes : []),
-            autoExportEnabled: !!this._autoExportEnabled,
-            autoExportDirName: this._autoExportDirName || '',
             // PAT deliberately excluded — backups must never carry credentials.
             ghBackupRepo: this._ghBackupRepo || '',
             ghBackupBranch: this._ghBackupBranch || 'main',
@@ -2067,24 +2014,14 @@ class Plugin extends AppPlugin {
         await this._saveManagerSettings({
             communityRepos: typeof managerSettings.communityRepos === 'string' ? managerSettings.communityRepos : undefined,
             savedThemes: Array.isArray(managerSettings.savedThemes) ? managerSettings.savedThemes : undefined,
-            autoExportEnabled: typeof managerSettings.autoExportEnabled === 'boolean' ? managerSettings.autoExportEnabled : undefined,
             ghBackupRepo: typeof managerSettings.ghBackupRepo === 'string' ? managerSettings.ghBackupRepo : undefined,
             ghBackupBranch: typeof managerSettings.ghBackupBranch === 'string' ? managerSettings.ghBackupBranch : undefined,
             ghBackupPath: typeof managerSettings.ghBackupPath === 'string' ? managerSettings.ghBackupPath : undefined
         });
 
-        if (typeof managerSettings.autoExportDirName === 'string') {
-            this._autoExportDirName = managerSettings.autoExportDirName;
-            localStorage.setItem('pm_auto_export_dir_name', managerSettings.autoExportDirName);
-        }
-
         if (container) {
             const reposInput = container.querySelector('#pm-repos-input');
             if (reposInput) reposInput.value = this.communityRepos;
-            const autoExportToggle = container.querySelector('#pm-auto-export-toggle');
-            if (autoExportToggle) autoExportToggle.checked = this._autoExportEnabled;
-            const autoExportDirLabel = container.querySelector('#pm-auto-export-dir-label');
-            if (autoExportDirLabel) autoExportDirLabel.textContent = this._autoExportDirName ? '📁 ' + this._autoExportDirName : 'No directory selected';
             this._renderThemesList(container);
             this._renderWorkspaceSummary(container);
         }
@@ -2190,8 +2127,7 @@ class Plugin extends AppPlugin {
 
     /** Auto-export full backup using whichever destination mode is active. */
     async _autoExport() {
-        if (!this._autoExportEnabled) return;
-
+        // Always on — every change backs up to GitHub.
         // Debounce rapid successive calls (e.g. update-all loop)
         if (this._autoExportTimer) clearTimeout(this._autoExportTimer);
         this._autoExportTimer = setTimeout(() => { this._autoExportTimer = null; this._runAutoExport(); }, 400);
@@ -2199,46 +2135,20 @@ class Plugin extends AppPlugin {
 
     async _runAutoExport() {
         try {
+            if (!this._ghBackupRepo) {
+                console.warn('[Plugins Manager] Auto-backup skipped: set a repository in Settings → GitHub Backup.');
+                return;
+            }
             const data = await this._getExportData();
             const jsonStr = JSON.stringify(this._buildExportPayload('all', data), null, 2);
-            const filename = this._getBackupJsonFilename('all');
-            const mode = this._autoExportMode || (this._autoExportDirHandle ? 'fsaccess' : '');
-
-            // GitHub is the primary destination when configured — plain fetch works in
-            // every client (desktop included), unlike the FS Access folder picker.
-            if (this._ghBackupRepo) {
-                const out = await this._pushBackupToGithub(jsonStr);
-                if (out && out.skipped) {
-                    console.log('[Plugins Manager] Auto-backup: GitHub copy already up to date.');
-                } else {
-                    console.log(`[Plugins Manager] Auto-backup committed to ${this._ghBackupRepo}${out && out.commit ? ' @ ' + out.commit.slice(0, 7) : ''}`);
-                }
-                return;
+            const out = await this._pushBackupToGithub(jsonStr);
+            if (out && out.skipped) {
+                console.log('[Plugins Manager] Auto-backup: GitHub copy already up to date.');
+            } else {
+                console.log(`[Plugins Manager] Auto-backup committed to ${this._ghBackupRepo}${out && out.commit ? ' @ ' + out.commit.slice(0, 7) : ''}`);
             }
-
-            if (mode === 'fsaccess' && this._autoExportDirHandle) {
-                const perm = await this._autoExportDirHandle.requestPermission({ mode: 'readwrite' });
-                if (perm !== 'granted') {
-                    console.warn('[Plugins Manager] Auto-export: write permission denied.');
-                    return;
-                }
-                const fileHandle = await this._autoExportDirHandle.getFileHandle(filename, { create: true });
-                const writable = await fileHandle.createWritable();
-                await writable.write(jsonStr);
-                await writable.close();
-                console.log(`[Plugins Manager] Auto-exported backup to ${this._autoExportDirName}/${filename}`);
-                return;
-            }
-
-            if (mode === 'download') {
-                this._triggerDownload(filename, jsonStr, 'application/json');
-                console.log(`[Plugins Manager] Auto-exported backup as download: ${filename}`);
-                return;
-            }
-
-            console.warn('[Plugins Manager] Auto-export enabled but no destination is configured.');
         } catch (e) {
-            console.error('[Plugins Manager] Auto-export failed:', e);
+            console.error('[Plugins Manager] Auto-backup failed:', e);
             this.ui.addToaster({ title: "Auto-Backup Failed", message: e.message, autoDestroyTime: 6000, dismissible: true });
         }
     }
@@ -2433,107 +2343,6 @@ class Plugin extends AppPlugin {
         return existing.content;
     }
 
-    /** Detect available auto-export destinations in this runtime. */
-    _detectAutoExportCaps() {
-        const caps = { hasFSAccess: false, canDownload: true };
-        try { caps.hasFSAccess = typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function'; } catch (e) { }
-        // Downloads work in any environment that provides URL.createObjectURL + <a download>
-        try { caps.canDownload = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'; } catch (e) { caps.canDownload = false; }
-        return caps;
-    }
-
-    _autoExportDestinationLabel() {
-        if (this._ghBackupRepo) return '⬆ GitHub: ' + this._ghBackupRepo;
-        if (this._autoExportMode === 'fsaccess' && this._autoExportDirName) return '📁 ' + this._autoExportDirName;
-        if (this._autoExportMode === 'download') return '⬇ Downloads folder (per-change)';
-        // Legacy state: dir name saved but mode not set → treat as fsaccess
-        if (this._autoExportDirName) return '📁 ' + this._autoExportDirName;
-        return 'No destination selected';
-    }
-
-    _autoExportModeHint() {
-        if (this._ghBackupRepo) {
-            return 'Backups are committed to the GitHub repository on each change (primary). The folder/download destination applies only if the repository is cleared.';
-        }
-        if (this._autoExportCaps.hasFSAccess) {
-            return 'Backups are written directly to the chosen folder.';
-        }
-        if (this._autoExportCaps.canDownload) {
-            return 'Folder picker is unavailable in this build; backups will be saved via browser download to your Downloads folder on each change.';
-        }
-        return 'Automatic backups are not available in this runtime.';
-    }
-
-    /** Prompt for destination, adapting to runtime capabilities. */
-    async _chooseAutoExportTarget(container) {
-        // Re-detect (in case the build updated between sessions)
-        this._autoExportCaps = this._detectAutoExportCaps();
-
-        if (this._autoExportCaps.hasFSAccess) {
-            try {
-                const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-                this._autoExportDirHandle = handle;
-                this._autoExportDirName = handle.name;
-                this._autoExportMode = 'fsaccess';
-                localStorage.setItem('pm_auto_export_dir_name', handle.name);
-                localStorage.setItem('pm_auto_export_mode', 'fsaccess');
-                await this._storeAutoExportHandle(handle);
-                this._applyAutoExportUI(container, 'Directory Set', `Backups will save to: ${handle.name}`);
-            } catch (e) {
-                if (e && e.name !== 'AbortError') {
-                    // Some desktop builds expose showDirectoryPicker but it throws NotAllowedError; fall back.
-                    console.warn('[Plugins Manager] showDirectoryPicker failed, falling back to download mode:', e);
-                    this._autoExportCaps.hasFSAccess = false;
-                    await this._offerDownloadFallback(container, e.message);
-                }
-            }
-            return;
-        }
-
-        if (this._autoExportCaps.canDownload) {
-            await this._offerDownloadFallback(container);
-            return;
-        }
-
-        this.ui.addToaster({
-            title: "Not Supported",
-            message: "This runtime does not expose a way to save files. Please use the Backup Workspace button manually.",
-            autoDestroyTime: 6000,
-            dismissible: true
-        });
-    }
-
-    async _offerDownloadFallback(container, originalError = '') {
-        const msg = 'Folder picker is not available in this build (common on the Thymer desktop app). '
-            + 'Enable "download backup on each change" instead? Files will land in your Downloads folder.'
-            + (originalError ? `\n\n(Reason: ${originalError})` : '');
-        if (!confirm(msg)) return;
-        this._autoExportDirHandle = null;
-        this._autoExportDirName = '';
-        this._autoExportMode = 'download';
-        localStorage.setItem('pm_auto_export_mode', 'download');
-        localStorage.removeItem('pm_auto_export_dir_name');
-        this._applyAutoExportUI(container, 'Auto-Download Enabled', 'Backups will download on each change.');
-    }
-
-    async _applyAutoExportUI(container, toastTitle, toastMessage) {
-        if (container) {
-            const lbl = container.querySelector('#pm-auto-export-dir-label');
-            if (lbl) lbl.textContent = this._autoExportDestinationLabel();
-            const btn = container.querySelector('#pm-auto-export-dir-btn');
-            if (btn) btn.textContent = this._autoExportCaps.hasFSAccess ? 'Choose Directory' : 'Choose Destination';
-            const hint = container.querySelector('#pm-auto-export-mode-help');
-            if (hint) hint.textContent = this._autoExportModeHint();
-            const toggle = container.querySelector('#pm-auto-export-toggle');
-            if (toggle) toggle.checked = true;
-        }
-        this._autoExportEnabled = true;
-        localStorage.setItem('pm_auto_export', 'true');
-        await this._saveManagerSettings({ autoExportEnabled: true });
-        if (container) this._renderWorkspaceSummary(container);
-        this.ui.addToaster({ title: toastTitle, message: toastMessage, autoDestroyTime: 3000, dismissible: true });
-    }
-
     /** Trigger a blob download via an ephemeral anchor. */
     _triggerDownload(filename, content, mimeType = 'application/json') {
         const blob = new Blob([content], { type: mimeType });
@@ -2548,43 +2357,6 @@ class Plugin extends AppPlugin {
             try { document.body.removeChild(a); } catch (e) { }
             try { URL.revokeObjectURL(url); } catch (e) { }
         }, 1500);
-    }
-
-    /** Store directory handle in IndexedDB for persistence across sessions */
-    async _storeAutoExportHandle(handle) {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open('plugin-manager-db', 1);
-            req.onupgradeneeded = (e) => { e.target.result.createObjectStore('handles'); };
-            req.onsuccess = (e) => {
-                const db = e.target.result;
-                const tx = db.transaction('handles', 'readwrite');
-                tx.objectStore('handles').put(handle, 'autoExportDir');
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => reject(tx.error);
-            };
-            req.onerror = () => reject(req.error);
-        });
-    }
-
-    /** Restore directory handle from IndexedDB */
-    async _restoreAutoExportHandle() {
-        try {
-            const handle = await new Promise((resolve, reject) => {
-                const req = indexedDB.open('plugin-manager-db', 1);
-                req.onupgradeneeded = (e) => { e.target.result.createObjectStore('handles'); };
-                req.onsuccess = (e) => {
-                    const db = e.target.result;
-                    const tx = db.transaction('handles', 'readonly');
-                    const getReq = tx.objectStore('handles').get('autoExportDir');
-                    getReq.onsuccess = () => resolve(getReq.result || null);
-                    getReq.onerror = () => reject(getReq.error);
-                };
-                req.onerror = () => reject(req.error);
-            });
-            if (handle) this._autoExportDirHandle = handle;
-        } catch (e) {
-            console.warn('[Plugins Manager] Could not restore auto-export directory handle:', e);
-        }
     }
 
     // --- Utilities ---
@@ -3455,13 +3227,8 @@ class Plugin extends AppPlugin {
             <div id="pm-import-modal" class="pm-modal">
                 <div class="pm-modal-content">
                     <h3>Restore ${sectionMeta.importLabel}</h3>
-                    <p>Paste GitHub URLs (one per line), paste a JSON backup array/object, or upload a workspace backup file.</p>
+                    <p>Paste GitHub URLs (one per line) or a JSON backup array/object.</p>
                     <textarea id="pm-import-textarea" class="pm-textarea" placeholder="https://github.com/user/repo1\nhttps://github.com/user/repo2"></textarea>
-                    
-                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pm-border-default);">
-                        <label style="display: block; font-size: 13px; margin-bottom: 5px; color: var(--pm-text-muted);">Or upload a backup file:</label>
-                        <input type="file" id="pm-import-file" accept=".json" style="font-size: 13px; color: inherit; width: 100%;" />
-                    </div>
 
                     <div style="margin-top: 15px; display: flex; align-items: center; justify-content: space-between;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
@@ -3483,17 +3250,6 @@ class Plugin extends AppPlugin {
 
         document.getElementById('pm-import-cancel').addEventListener('click', () => {
             this._closeModal(tempDiv);
-        });
-
-        // Handle file upload immediately dumping text into the textarea for preview/processing
-        document.getElementById('pm-import-file').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                document.getElementById('pm-import-textarea').value = ev.target.result;
-            };
-            reader.readAsText(file);
         });
 
         document.getElementById('pm-import-confirm').addEventListener('click', async () => {

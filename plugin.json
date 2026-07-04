@@ -3,9 +3,9 @@
     "type": "plugin",
     "name": "Plugins Manager",
     "icon": "box",
-    "version": "1.5.2-fork.3",
+    "version": "1.6.0-fork.4",
     "__source_repo": "https://github.com/jkroes/thymer-plugins-manager",
-    "description": "Install, update, import and export Thymer plugins. Fork: GitHub push/pull is the primary workspace backup/restore mechanism (Contents API; works in the desktop app).",
+    "description": "Install, update, import and export Thymer plugins. Fork: GitHub-only backup/restore — auto-push on every change, point-in-time restore from commit history.",
     "permissions": [
         "global_plugins",
         "collections"
