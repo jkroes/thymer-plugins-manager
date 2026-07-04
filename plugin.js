@@ -2305,10 +2305,10 @@ class Plugin extends AppPlugin {
         return { sha: j.sha || null, content: j.content ? this._b64DecodeUtf8(j.content) : null };
     }
 
-    /** List commits that touched the backup file, newest first. */
-    async _listBackupCommits(limit = 50) {
+    /** List commits that touched the backup file, newest first. Paged (1-based). */
+    async _listBackupCommits(limit = 50, page = 1) {
         const { repo, branch, path } = this._ghBackupTarget();
-        const url = `https://api.github.com/repos/${repo}/commits?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(branch)}&per_page=${limit}`;
+        const url = `https://api.github.com/repos/${repo}/commits?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(branch)}&per_page=${limit}&page=${page}`;
         const res = await fetch(url, { headers: this._ghBackupHeaders() });
         if (!res.ok) throw new Error(`GitHub history read failed (${res.status}) — check repository, branch, and PAT permissions.`);
         const arr = await res.json();
@@ -2320,47 +2320,82 @@ class Plugin extends AppPlugin {
 
     /** Modal listing backup versions (one per commit); picking one prefills the restore dialog. */
     async _showGithubRestorePicker(container) {
-        const commits = await this._listBackupCommits();
-        if (!commits.length) {
+        const PAGE_SIZE = 50;
+        const firstPage = await this._listBackupCommits(PAGE_SIZE, 1);
+        if (!firstPage.length) {
             const { repo, path } = this._ghBackupTarget();
             throw new Error(`No backups found at ${repo}/${path} yet.`);
         }
-        const rows = commits.map((c, i) => {
-            const d = c.date ? new Date(c.date) : null;
-            const label = d && !Number.isNaN(d.getTime()) ? d.toLocaleString() : c.sha.slice(0, 7);
-            return `<button type="button" class="pm-btn pm-gh-commit-row" data-sha="${this._escHtml(c.sha)}" style="display:block;width:100%;text-align:left;margin-bottom:6px;">
-                        <strong>${this._escHtml(label)}</strong>${i === 0 ? ' — latest' : ''}
-                        <span style="opacity:.7;font-size:12px;"> · ${this._escHtml(c.sha.slice(0, 7))}</span>
-                    </button>`;
-        }).join('');
+
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = `
             <div id="pm-gh-restore-modal" class="pm-modal">
                 <div class="pm-modal-content">
                     <h3>Restore from GitHub</h3>
                     <p>Choose a backup version — every backup is a commit:</p>
-                    <div style="max-height:320px;overflow-y:auto;">${rows}</div>
-                    <div style="margin-top:12px;text-align:right;">
+                    <div id="pm-gh-commit-list" style="max-height:320px;overflow-y:auto;"></div>
+                    <div style="margin-top:12px;display:flex;justify-content:space-between;">
+                        <button class="pm-btn" id="pm-gh-restore-more">Load older…</button>
                         <button class="pm-btn" id="pm-gh-restore-cancel">Cancel</button>
                     </div>
                 </div>
             </div>`;
         this._openModal(tempDiv);
+        const listEl = tempDiv.querySelector('#pm-gh-commit-list');
+        const moreBtn = tempDiv.querySelector('#pm-gh-restore-more');
         tempDiv.querySelector('#pm-gh-restore-cancel').addEventListener('click', () => this._closeModal(tempDiv));
-        tempDiv.querySelectorAll('.pm-gh-commit-row').forEach(rowBtn => {
-            rowBtn.addEventListener('click', async () => {
-                try {
-                    rowBtn.disabled = true;
-                    const jsonStr = await this._fetchBackupFromGithub(rowBtn.dataset.sha);
-                    this._closeModal(tempDiv);
-                    await this.showImportDialog(container, 'all');
-                    const ta = document.getElementById('pm-import-textarea');
-                    if (ta) ta.value = jsonStr;
-                } catch (e) {
-                    this.ui.addToaster({ title: 'GitHub Restore Failed', message: e.message, autoDestroyTime: 6000, dismissible: true });
-                    rowBtn.disabled = false;
-                }
-            });
+
+        let page = 1;
+        let total = 0;
+        const appendRows = (commits) => {
+            for (const c of commits) {
+                const d = c.date ? new Date(c.date) : null;
+                const label = d && !Number.isNaN(d.getTime()) ? d.toLocaleString() : c.sha.slice(0, 7);
+                const rowBtn = document.createElement('button');
+                rowBtn.type = 'button';
+                rowBtn.className = 'pm-btn pm-gh-commit-row';
+                rowBtn.style.cssText = 'display:block;width:100%;text-align:left;margin-bottom:6px;';
+                rowBtn.innerHTML = `<strong>${this._escHtml(label)}</strong>${total === 0 ? ' — latest' : ''}
+                    <span style="opacity:.7;font-size:12px;"> · ${this._escHtml(c.sha.slice(0, 7))}</span>`;
+                rowBtn.addEventListener('click', async () => {
+                    try {
+                        rowBtn.disabled = true;
+                        const jsonStr = await this._fetchBackupFromGithub(c.sha);
+                        this._closeModal(tempDiv);
+                        await this.showImportDialog(container, 'all');
+                        const ta = document.getElementById('pm-import-textarea');
+                        if (ta) ta.value = jsonStr;
+                    } catch (e) {
+                        this.ui.addToaster({ title: 'GitHub Restore Failed', message: e.message, autoDestroyTime: 6000, dismissible: true });
+                        rowBtn.disabled = false;
+                    }
+                });
+                listEl.appendChild(rowBtn);
+                total++;
+            }
+        };
+
+        const maybeHideMore = (batch) => {
+            if (batch.length < PAGE_SIZE) moreBtn.style.display = 'none';
+        };
+
+        appendRows(firstPage);
+        maybeHideMore(firstPage);
+
+        moreBtn.addEventListener('click', async () => {
+            try {
+                moreBtn.disabled = true;
+                moreBtn.innerText = 'Loading…';
+                page++;
+                const batch = await this._listBackupCommits(PAGE_SIZE, page);
+                appendRows(batch);
+                maybeHideMore(batch);
+            } catch (e) {
+                this.ui.addToaster({ title: 'GitHub Restore Failed', message: e.message, autoDestroyTime: 6000, dismissible: true });
+            } finally {
+                moreBtn.disabled = false;
+                moreBtn.innerText = 'Load older…';
+            }
         });
     }
 
