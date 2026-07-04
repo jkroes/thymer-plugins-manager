@@ -93,3 +93,16 @@ npm run build
 ```
 
 This bundles `plugin.js` via esbuild into the `dist/` directory.
+
+---
+
+## Fork notice
+
+This is a permanently diverged fork of
+[ahpatel/thymer-plugins-manager](https://github.com/ahpatel/thymer-plugins-manager)
+(v1.4.0), owned by @jkroes. It does not track upstream. `__source_repo` points at
+this repo so the manager's self-update mechanism pulls from here, not upstream.
+
+Planned divergence: GitHub push/pull as the primary workspace backup/restore
+mechanism (GitHub Contents API; works in the desktop app where the File System
+Access folder picker does not).
