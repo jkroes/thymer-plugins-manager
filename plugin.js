@@ -635,10 +635,7 @@ class Plugin extends AppPlugin {
             const btn = ev.currentTarget;
             try {
                 btn.disabled = true;
-                const jsonStr = await this._fetchBackupFromGithub();
-                await this.showImportDialog(container, 'all');
-                const ta = document.getElementById('pm-import-textarea');
-                if (ta) ta.value = jsonStr;
+                await this._showGithubRestorePicker(container);
             } catch (e) {
                 this.ui.addToaster({ title: 'GitHub Restore Failed', message: e.message, autoDestroyTime: 6000, dismissible: true });
             } finally {
@@ -2286,21 +2283,85 @@ class Plugin extends AppPlugin {
         return new TextDecoder().decode(bytes);
     }
 
-    /** Read the current backup file; {sha:null, content:null} when it doesn't exist yet. */
-    async _ghReadBackupFile() {
+    /**
+     * Read the backup file; {sha:null, content:null} when it doesn't exist yet.
+     * `ref` defaults to the configured branch — pass a commit sha to read a
+     * historical version.
+     */
+    async _ghReadBackupFile(ref) {
         const { branch, url } = this._ghBackupTarget();
-        const res = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, { headers: this._ghBackupHeaders() });
+        const refArg = ref || branch;
+        const res = await fetch(`${url}?ref=${encodeURIComponent(refArg)}`, { headers: this._ghBackupHeaders() });
         if (res.status === 404) return { sha: null, content: null };
         if (!res.ok) throw new Error(`GitHub read failed (${res.status}) — check repository, branch, and PAT permissions.`);
         const j = await res.json();
         // Contents API inlines content only up to ~1 MB; refetch raw for bigger backups.
         if (j.sha && !(j.content || '').trim()) {
-            const raw = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, {
+            const raw = await fetch(`${url}?ref=${encodeURIComponent(refArg)}`, {
                 headers: { ...this._ghBackupHeaders(), 'Accept': 'application/vnd.github.v3.raw' }
             });
             if (raw.ok) return { sha: j.sha, content: await raw.text() };
         }
         return { sha: j.sha || null, content: j.content ? this._b64DecodeUtf8(j.content) : null };
+    }
+
+    /** List commits that touched the backup file, newest first. */
+    async _listBackupCommits(limit = 50) {
+        const { repo, branch, path } = this._ghBackupTarget();
+        const url = `https://api.github.com/repos/${repo}/commits?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(branch)}&per_page=${limit}`;
+        const res = await fetch(url, { headers: this._ghBackupHeaders() });
+        if (!res.ok) throw new Error(`GitHub history read failed (${res.status}) — check repository, branch, and PAT permissions.`);
+        const arr = await res.json();
+        return (Array.isArray(arr) ? arr : []).map(c => ({
+            sha: c.sha,
+            date: (c.commit && ((c.commit.author && c.commit.author.date) || (c.commit.committer && c.commit.committer.date))) || ''
+        }));
+    }
+
+    /** Modal listing backup versions (one per commit); picking one prefills the restore dialog. */
+    async _showGithubRestorePicker(container) {
+        const commits = await this._listBackupCommits();
+        if (!commits.length) {
+            const { repo, path } = this._ghBackupTarget();
+            throw new Error(`No backups found at ${repo}/${path} yet.`);
+        }
+        const rows = commits.map((c, i) => {
+            const d = c.date ? new Date(c.date) : null;
+            const label = d && !Number.isNaN(d.getTime()) ? d.toLocaleString() : c.sha.slice(0, 7);
+            return `<button type="button" class="pm-btn pm-gh-commit-row" data-sha="${this._escHtml(c.sha)}" style="display:block;width:100%;text-align:left;margin-bottom:6px;">
+                        <strong>${this._escHtml(label)}</strong>${i === 0 ? ' — latest' : ''}
+                        <span style="opacity:.7;font-size:12px;"> · ${this._escHtml(c.sha.slice(0, 7))}</span>
+                    </button>`;
+        }).join('');
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = `
+            <div id="pm-gh-restore-modal" class="pm-modal">
+                <div class="pm-modal-content">
+                    <h3>Restore from GitHub</h3>
+                    <p>Choose a backup version — every backup is a commit:</p>
+                    <div style="max-height:320px;overflow-y:auto;">${rows}</div>
+                    <div style="margin-top:12px;text-align:right;">
+                        <button class="pm-btn" id="pm-gh-restore-cancel">Cancel</button>
+                    </div>
+                </div>
+            </div>`;
+        this._openModal(tempDiv);
+        tempDiv.querySelector('#pm-gh-restore-cancel').addEventListener('click', () => this._closeModal(tempDiv));
+        tempDiv.querySelectorAll('.pm-gh-commit-row').forEach(rowBtn => {
+            rowBtn.addEventListener('click', async () => {
+                try {
+                    rowBtn.disabled = true;
+                    const jsonStr = await this._fetchBackupFromGithub(rowBtn.dataset.sha);
+                    this._closeModal(tempDiv);
+                    await this.showImportDialog(container, 'all');
+                    const ta = document.getElementById('pm-import-textarea');
+                    if (ta) ta.value = jsonStr;
+                } catch (e) {
+                    this.ui.addToaster({ title: 'GitHub Restore Failed', message: e.message, autoDestroyTime: 6000, dismissible: true });
+                    rowBtn.disabled = false;
+                }
+            });
+        });
     }
 
     async _pushBackupToGithub(jsonStr) {
@@ -2327,9 +2388,9 @@ class Plugin extends AppPlugin {
         }
     }
 
-    /** Fetch the backup JSON from the configured repo (used by Restore from GitHub). */
-    async _fetchBackupFromGithub() {
-        const existing = await this._ghReadBackupFile();
+    /** Fetch the backup JSON from the configured repo; pass a commit sha for a historical version. */
+    async _fetchBackupFromGithub(ref) {
+        const existing = await this._ghReadBackupFile(ref);
         if (existing.content === null) {
             const { repo, path } = this._ghBackupTarget();
             throw new Error(`No backup found at ${repo}/${path}. Push one first (any plugin change with auto-backup on, or Backup Workspace + commit manually).`);

@@ -107,8 +107,9 @@ where the File System Access folder picker is not wired up by the Electron shell
   every plugin/collection/theme change commits the backup JSON to GitHub (debounced;
   identical content is skipped, which also dedupes multiple open clients). Git history
   doubles as backup versioning — every backup is a commit.
-- **Restore from GitHub**: fetches the configured file and prefills the normal restore
-  dialog (Full Override works there; it now uses a two-click confirm because
+- **Restore from GitHub**: lists the backup file's commit history so you pick a
+  day/time to restore from (latest first), then prefills the normal restore dialog
+  (Full Override works there; it now uses a two-click confirm because
   `window.confirm` is suppressed in the plugin sandbox).
 - **Credential hygiene**: `custom.githubPat` is redacted from backup payloads, so the
   token never leaves the workspace inside a backup artifact. After a rewind or on a
