@@ -22,13 +22,14 @@ A utility plugin for Thymer that allows you to install, manage, update, import, 
 - **One-Click Installs**: Install community plugins directly from the Discover tab without copy-pasting code.
 - **Smart Updates**: Background update checker runs twice daily and notifies you when new versions are available. Update a single plugin with one click or use "Update All" to batch apply all pending updates.
 
-### Import & Export
+### Backup & Restore (GitHub-only)
 
-- **Bulk Import**: Import multiple plugins via a list of GitHub URLs or a JSON backup file. Per-plugin duplicate resolution — skipping one plugin doesn't cancel the rest.
-- **Full Override Restore**: When importing a JSON backup, optionally check "Full Override" to cleanly delete any currently installed plugins not present in the backup, restoring the exact configuration state.
-- **Full Backup Export**: Download a complete JSON backup containing all plugin configuration and code, or export a simple URL list. Export filenames automatically include the workspace subdomain and timestamp.
-- **Auto-Export**: Optionally auto-save a backup JSON file to a local directory whenever plugins are installed, updated, or deleted. Auto-exports feature timestamped and workspace-aware filenames. Uses the File System Access API.
-- **Theme Library**: A dedicated tab to manage your saved themes. Add themes via GitHub URL (with smart CSS detection) or manual paste. Combine and export all saved themes into a single CSS file.
+- **Automatic backups**: every plugin/collection/theme change commits a full workspace
+  snapshot to the configured GitHub repository. No manual backup, no files on disk.
+- **Point-in-time restore**: Settings → Restore from GitHub lists the backup commit
+  history; pick a date/time, review, Import (optionally Full Override, which deletes
+  anything not in the chosen backup).
+- **Theme Library**: A dedicated tab to manage your saved themes. Add themes via GitHub URL (with smart CSS detection) or manual paste. Export CSS merges saved themes into a single stylesheet for Thymer's theme editor.
 
 ### Security & Reliability
 
@@ -65,9 +66,9 @@ Click the **Plugins Manager** icon in your left statusbar or from the Command Pa
 
 | Tab | Purpose |
 | ----- | --------- |
-| **Plugins** | Manage workspace-level app plugins. Install, update, delete, import, export. |
+| **Plugins** | Manage workspace-level app plugins. Install, update, delete. |
 | **Collections** | Manage collection-specific plugins. Same actions as Plugins. |
-| **Themes** | Manage your Theme Library. Save themes from GitHub URLs or manual paste, and export a combined CSS block. |
+| **Themes** | Manage your Theme Library. Save themes from GitHub URLs or manual paste; Export CSS produces a combined stylesheet. |
 | **Discover** | Browse community plugins and themes. Search, filter, install, or preview. |
 | **Settings** | Configure GitHub PAT, community repo URLs, and the GitHub backup repository. |
 
@@ -116,7 +117,9 @@ where the File System Access folder picker is not wired up by the Electron shell
   token never leaves the workspace inside a backup artifact. After a rewind or on a
   fresh workspace, re-paste the PAT once, then Restore from GitHub.
 - Upstream's folder-picker/auto-download destinations, manual "Backup Workspace"
-  button, and backup-file upload were removed entirely in this fork.
+  button, backup-file upload, per-tab "Backup/Restore Plugins/Collections" buttons,
+  and the JSON/URL export dialog were all removed in this fork — install/update/delete
+  happen in the tabs; backup/restore exists only as Settings → GitHub.
 
 ---
 

@@ -281,8 +281,6 @@ class Plugin extends AppPlugin {
                     <div class="pm-tab-toolbar">
                         <div class="pm-tab-actions pm-tab-actions-primary">
                             <button class="pm-btn primary" id="pm-install-global-btn">Install Plugin</button>
-                            <button class="pm-btn" id="pm-import-global-btn">Restore Plugins</button>
-                            <button class="pm-btn" id="pm-export-global-btn">Backup Plugins</button>
                         </div>
                         <div class="pm-tab-actions pm-tab-actions-secondary">
                             <button class="pm-btn pm-btn-update" id="pm-check-updates-global-btn" title="Check for plugin updates"><span class="pm-btn-icon" aria-hidden="true">↻</span></button>
@@ -296,8 +294,6 @@ class Plugin extends AppPlugin {
                     <div class="pm-tab-toolbar">
                         <div class="pm-tab-actions pm-tab-actions-primary">
                             <button class="pm-btn primary" id="pm-install-col-btn">Install Collection Plugin</button>
-                            <button class="pm-btn" id="pm-import-col-btn">Restore Collections</button>
-                            <button class="pm-btn" id="pm-export-col-btn">Backup Collections</button>
                         </div>
                         <div class="pm-tab-actions pm-tab-actions-secondary">
                             <button class="pm-btn pm-btn-update" id="pm-check-updates-col-btn" title="Check for collection updates"><span class="pm-btn-icon" aria-hidden="true">↻</span></button>
@@ -335,7 +331,7 @@ class Plugin extends AppPlugin {
                             <button class="pm-btn" id="pm-add-theme-manual-btn">Paste CSS</button>
                         </div>
                         <div class="pm-tab-actions pm-tab-actions-secondary">
-                            <button class="pm-btn" id="pm-export-all-themes-btn">Backup Theme CSS</button>
+                            <button class="pm-btn" id="pm-export-all-themes-btn">Export CSS</button>
                         </div>
                     </div>
                     <div id="pm-themes-list" class="pm-list-container"></div>
@@ -639,14 +635,10 @@ class Plugin extends AppPlugin {
 
         // Actions
         container.querySelector('#pm-install-global-btn').addEventListener('click', () => this.showInstallDialog(container, 'app'));
-        container.querySelector('#pm-import-global-btn').addEventListener('click', () => this.showImportDialog(container, 'app'));
-        container.querySelector('#pm-export-global-btn').addEventListener('click', () => this.showExportDialog('app'));
         container.querySelector('#pm-check-updates-global-btn').addEventListener('click', () => this._manualCheckForUpdates(container, 'app'));
         container.querySelector('#pm-update-all-global-btn').addEventListener('click', () => this._updateAllAvailable(container, 'app'));
 
         container.querySelector('#pm-install-col-btn').addEventListener('click', () => this.showInstallDialog(container, 'collection'));
-        container.querySelector('#pm-import-col-btn').addEventListener('click', () => this.showImportDialog(container, 'collection'));
-        container.querySelector('#pm-export-col-btn').addEventListener('click', () => this.showExportDialog('collection'));
         container.querySelector('#pm-check-updates-col-btn').addEventListener('click', () => this._manualCheckForUpdates(container, 'collection'));
         container.querySelector('#pm-update-all-col-btn').addEventListener('click', () => this._updateAllAvailable(container, 'collection'));
 
@@ -1415,7 +1407,7 @@ class Plugin extends AppPlugin {
                 <div class="pm-card pm-empty-state">
                     <div class="pm-card-info">
                         <p>No themes saved yet. Use <strong>Add from GitHub</strong> to fetch a theme CSS from a repository, or <strong>Paste CSS</strong> to save your own theme.</p>
-                        <p class="pm-meta-text">Once saved, use <strong>Backup Theme CSS</strong> to copy the combined CSS into Thymer's <strong>Edit Theme CSS</strong> setting.</p>
+                        <p class="pm-meta-text">Once saved, use <strong>Export CSS</strong> to copy the combined CSS into Thymer's <strong>Edit Theme CSS</strong> setting.</p>
                     </div>
                 </div>`;
             return;
@@ -2108,21 +2100,6 @@ class Plugin extends AppPlugin {
         const now = new Date();
         const pad = (n) => String(n).padStart(2, '0');
         return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    }
-
-    _getBackupJsonFilename(section) {
-        const wsName = this._getWorkspaceName();
-        const ts = this._getBackupTimestamp();
-        if (section === 'all') {
-            return `thymer-backup-workspace-${wsName}-${ts}.json`;
-        }
-        if (section === 'collection') {
-            return `thymer-backup-collections-${wsName}-${ts}.json`;
-        }
-        if (section === 'theme') {
-            return `thymer-backup-themes-${wsName}-${ts}.css`;
-        }
-        return `thymer-backup-plugins-${wsName}-${ts}.json`;
     }
 
     /** Auto-export full backup using whichever destination mode is active. */
@@ -3075,159 +3052,13 @@ class Plugin extends AppPlugin {
         });
     }
 
-    async showExportDialog(typeFilter) {
-        const allData = await this._getExportData();
-        let candidateData;
-        if (typeFilter === 'app') {
-            candidateData = allData.filter(d => d.type !== 'collection');
-        } else if (typeFilter === 'collection') {
-            candidateData = allData.filter(d => d.type === 'collection');
-        } else {
-            candidateData = allData;
-        }
-
-        const sectionMeta = this._getSectionMeta(typeFilter);
-        const typeLabel = sectionMeta.label;
-
-        // Build the selection list HTML
-        const selectionRows = candidateData.map((d, i) => `
-            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--pm-border-default); cursor:pointer;">
-                <input type="checkbox" class="pm-export-cb" data-index="${i}" checked />
-                <span style="flex:1; font-size:13px;">${this._escHtml(d.name || 'Unnamed')}</span>
-                <span style="font-size:11px; color:var(--pm-text-muted);">${this._escHtml(d.type || '')}</span>
-            </label>
-        `).join('');
-
-        const overlayHtml = `
-            <div id="pm-export-modal" class="pm-modal">
-                <div class="pm-modal-content pm-export-content">
-                    <h3>Backup ${typeLabel}</h3>
-
-                    <div style="margin-bottom:14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                            <label style="font-weight:bold; font-size:13px;">Select ${this._escHtml(sectionMeta.itemLabel)} to include</label>
-                            <div style="display:flex; gap:8px;">
-                                <button class="pm-btn" id="pm-sel-all" style="padding:2px 8px; font-size:11px;">All</button>
-                                <button class="pm-btn" id="pm-sel-none" style="padding:2px 8px; font-size:11px;">None</button>
-                            </div>
-                        </div>
-                        <div id="pm-export-selection" style="max-height:180px; overflow-y:auto; border:1px solid var(--pm-border-default); border-radius:6px; padding:0 10px;">
-                            ${selectionRows || '<p style="font-size:13px;color:var(--pm-text-muted);padding:8px 0;">No plugins found.</p>'}
-                        </div>
-                    </div>
-
-                    <div style="margin-bottom: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                            <label style="font-weight: bold;">Repository URLs (for quick restore in another workspace)</label>
-                            <div style="display: flex; gap: 5px;">
-                                <button class="pm-btn" id="pm-copy-urls" style="padding: 2px 8px; font-size: 11px;">Copy URLs</button>
-                                <button class="pm-btn" id="pm-download-urls" style="padding: 2px 8px; font-size: 11px;">Download URLs</button>
-                            </div>
-                        </div>
-                        <textarea class="pm-textarea pm-textarea-urls" id="pm-urls-text" readonly></textarea>
-                    </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                            <label style="font-weight: bold;">Full Backup (JSON with code, CSS, config, and manager settings)</label>
-                            <div style="display: flex; gap: 5px;">
-                                <button class="pm-btn" id="pm-copy-json" style="padding: 2px 8px; font-size: 11px;">Copy JSON</button>
-                                <button class="pm-btn primary" id="pm-download-json" style="padding: 2px 8px; font-size: 11px;">Download Backup</button>
-                            </div>
-                        </div>
-                        <textarea class="pm-textarea pm-textarea-json" id="pm-full-backup-text" readonly></textarea>
-                    </div>
-                    
-                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                        <button class="pm-btn" id="pm-export-close">Close</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = overlayHtml;
-        this._openModal(tempDiv);
-
-        // Helper: compute selected export data and refresh the textareas
-        const refreshTextareas = () => {
-            const checked = [...tempDiv.querySelectorAll('.pm-export-cb:checked')].map(cb => candidateData[parseInt(cb.dataset.index)]);
-            const urls = checked.map(d => d.source_repo).filter(Boolean).join('\n');
-            const fullBackup = JSON.stringify(this._buildExportPayload(typeFilter, checked), null, 2);
-            tempDiv.querySelector('#pm-urls-text').value = urls;
-            tempDiv.querySelector('#pm-full-backup-text').value = fullBackup;
-        };
-
-        // Initial fill
-        refreshTextareas();
-
-        // Checkbox changes
-        tempDiv.querySelectorAll('.pm-export-cb').forEach(cb => cb.addEventListener('change', refreshTextareas));
-
-        // Select All / None
-        tempDiv.querySelector('#pm-sel-all').addEventListener('click', () => {
-            tempDiv.querySelectorAll('.pm-export-cb').forEach(cb => cb.checked = true);
-            refreshTextareas();
-        });
-        tempDiv.querySelector('#pm-sel-none').addEventListener('click', () => {
-            tempDiv.querySelectorAll('.pm-export-cb').forEach(cb => cb.checked = false);
-            refreshTextareas();
-        });
-
-        tempDiv.querySelector('#pm-export-close').addEventListener('click', () => {
-            this._closeModal(tempDiv);
-        });
-
-        // Copy actions
-        tempDiv.querySelector('#pm-copy-urls').addEventListener('click', async (e) => {
-            await navigator.clipboard.writeText(tempDiv.querySelector('#pm-urls-text').value);
-            const orig = e.target.innerText;
-            e.target.innerText = "Copied!";
-            setTimeout(() => e.target.innerText = orig, 2000);
-        });
-
-        tempDiv.querySelector('#pm-copy-json').addEventListener('click', async (e) => {
-            await navigator.clipboard.writeText(tempDiv.querySelector('#pm-full-backup-text').value);
-            const orig = e.target.innerText;
-            e.target.innerText = "Copied!";
-            setTimeout(() => e.target.innerText = orig, 2000);
-        });
-
-        // Download actions
-        tempDiv.querySelector('#pm-download-urls').addEventListener('click', () => {
-            const content = tempDiv.querySelector('#pm-urls-text').value;
-            const blob = new Blob([content], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `thymer-${typeFilter}-urls-${this._getWorkspaceName()}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        });
-
-        tempDiv.querySelector('#pm-download-json').addEventListener('click', () => {
-            const content = tempDiv.querySelector('#pm-full-backup-text').value;
-            const blob = new Blob([content], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = this._getBackupJsonFilename(typeFilter);
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        });
-    }
-
     async showImportDialog(container, typeFilter) {
         const sectionMeta = this._getSectionMeta(typeFilter);
         const overlayHtml = `
             <div id="pm-import-modal" class="pm-modal">
                 <div class="pm-modal-content">
                     <h3>Restore ${sectionMeta.importLabel}</h3>
-                    <p>Paste GitHub URLs (one per line) or a JSON backup array/object.</p>
+                    <p>Review the backup fetched from GitHub, then click Import. Full Override deletes anything not in the backup.</p>
                     <textarea id="pm-import-textarea" class="pm-textarea" placeholder="https://github.com/user/repo1\nhttps://github.com/user/repo2"></textarea>
 
                     <div style="margin-top: 15px; display: flex; align-items: center; justify-content: space-between;">
