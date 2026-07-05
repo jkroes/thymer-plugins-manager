@@ -166,7 +166,7 @@ class Plugin extends AppPlugin {
                     if (repo && this._isValidGithubUrl(repo)) {
                         checkCount++;
                         const { json: remoteJson } = await this.fetchGithubRepo(repo, { sourceFiles: json.__source_files });
-                        if (remoteJson.version && remoteJson.version !== json.version) {
+                        if (this._isRemoteVersionNewer(remoteJson.version, json.version)) {
                             updatesAvailable[p.getGuid()] = {
                                 name: json.name || "Unnamed Plugin",
                                 version: remoteJson.version
@@ -258,6 +258,28 @@ class Plugin extends AppPlugin {
 
     _writeUpdateCache(cache) {
         try { localStorage.setItem('pm_updates_available', JSON.stringify(cache)); } catch (e) { }
+    }
+
+    /**
+     * True only if `remote` is strictly newer than `installed`.
+     *
+     * Compares numeric segments in order ("1.6.1-fork.5" -> 1,6,1,5); a missing
+     * segment counts as 0. Pairs whose numbers tie but whose strings differ
+     * (e.g. "1.0-beta" vs "1.0-rc") are NOT reported as updates: offering a
+     * same-or-older remote would silently overwrite newer local code. The
+     * Reinstall button remains the explicit way to force any overwrite.
+     */
+    _isRemoteVersionNewer(remote, installed) {
+        if (!remote) return false;
+        if (!installed) return true;
+        if (remote === installed) return false;
+        const nums = v => (String(v).match(/\d+/g) || []).map(Number);
+        const a = nums(remote), b = nums(installed);
+        for (let i = 0; i < Math.max(a.length, b.length); i++) {
+            const x = a[i] || 0, y = b[i] || 0;
+            if (x !== y) return x > y;
+        }
+        return false;
     }
 
     renderUI(panel) {
@@ -1251,7 +1273,7 @@ class Plugin extends AppPlugin {
             const remoteVersion = updateInfo ? updateInfo.version : null;
             const installedVersion = conf.version || conf.ver;
 
-            if (remoteVersion && remoteVersion !== installedVersion) {
+            if (this._isRemoteVersionNewer(remoteVersion, installedVersion)) {
                 card.classList.add('pm-card-upgradeable');
                 const badge = card.querySelector(`#vbadge-${p.getGuid()}`);
                 if (badge) {
@@ -1264,7 +1286,7 @@ class Plugin extends AppPlugin {
             let updateBtn = null;
             if (sourceRepo) {
                 // Known update version (string) if background checker flagged one
-                const knownUpdate = (remoteVersion && remoteVersion !== installedVersion) ? remoteVersion : null;
+                const knownUpdate = this._isRemoteVersionNewer(remoteVersion, installedVersion) ? remoteVersion : null;
 
                 updateBtn = document.createElement('button');
                 updateBtn.className = knownUpdate ? 'pm-btn pm-btn-update update-btn' : 'pm-btn pm-btn-update';
@@ -3226,8 +3248,16 @@ class Plugin extends AppPlugin {
                 throw new Error(`Failed to fetch from ${sourceRepo}: ${fetchErr.message}`);
             }
 
-            if (!forceUpdate && remoteJson.version === currentConf.version) {
-                this.ui.addToaster({ title: "Up to date", message: `${currentConf.name} is already on the latest version.`, autoDestroyTime: 3000, dismissible: true });
+            if (!forceUpdate && !this._isRemoteVersionNewer(remoteJson.version, currentConf.version)) {
+                const localAhead = remoteJson.version !== currentConf.version;
+                this.ui.addToaster({
+                    title: "Up to date",
+                    message: localAhead
+                        ? `${currentConf.name} (v${currentConf.version}) is ahead of GitHub (v${remoteJson.version || 'none'}). Push the repo to sync. Use Reinstall to overwrite local anyway.`
+                        : `${currentConf.name} is already on the latest version.`,
+                    autoDestroyTime: localAhead ? 6000 : 3000,
+                    dismissible: true
+                });
                 btnEl.className = 'pm-btn pm-btn-update';
                 btnEl.innerHTML = '';
                 btnEl.appendChild(this.ui.createIcon('check'));
