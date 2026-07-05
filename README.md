@@ -1,135 +1,88 @@
-# Thymer Plugins Manager
+# Thymer Plugins Manager (fork)
 
-A utility plugin for Thymer that allows you to install, manage, update, import, and export your Plugins and Collection Plugins from a single unified interface.
+Install, update, discover, and back up Thymer plugins, collection plugins, and
+themes from a single panel.
+
+**This is a permanently diverged fork of
+[ahpatel/thymer-plugins-manager](https://github.com/ahpatel/thymer-plugins-manager)**
+(forked at v1.4.0, maintained by [@jkroes](https://github.com/jkroes)). It does
+not track upstream, and `__source_repo` points here so the manager self-updates
+from this repository. The major divergence: backup/restore is **GitHub-only**
+(Contents API) instead of upstream's file/folder pathways, because the plain
+`fetch` approach works everywhere the plugin runs — including the Thymer
+desktop app, where the File System Access folder picker is not wired up.
 
 ## Features
 
-### Plugin Management
+| Tab | Purpose |
+| --- | --- |
+| **Plugins** | Install, update, reinstall, disable/enable, or delete app plugins. |
+| **Collections** | Same actions for collection plugins. Every Thymer collection appears here (a collection *is* a collection plugin); only GitHub-sourced ones are update-checked. |
+| **Themes** | Theme Library: save themes from a GitHub URL or pasted CSS, preview, and export all saved themes as one merged stylesheet. |
+| **Discover** | Browse, search, and one-click-install community plugins and themes from configurable repository README files. |
+| **Settings** | GitHub PAT, community repo URLs, backup repository, restore. |
 
-- **Centralized Dashboard**: View all installed Plugins and Collection Plugins in a clean, tabbed interface.
-- **One-Click Install**: Install plugins by pasting a GitHub repository URL. Supports standard repos, subdirectories, SDK examples, and non-standard file naming conventions.
-- **Smart File Discovery**: Automatically detects `plugin.json`, `plugin.js`, and CSS files — even when using custom filenames, extensionless Thymer exports, or nested folder structures.
-- **Automated Update Checks**: Background update checking (daily) with rate-limit-aware GitHub API polling. Displays a badge when newer versions are available.
-- **One-Click Updates**: Update any plugin to its latest GitHub version with pre-save validation to prevent incompatible code from crashing Thymer.
-- **Link Local Plugins**: Associate locally-installed plugins with a GitHub repo to enable update tracking.
-
-### Discover Tab
-
-- **Community Plugin Browser**: Discover plugins and themes from configurable community repository README files.
-- **Search & Filter**: Filter by name, description, or category. Filter chips for App Plugins, Collections, and Themes.
-- **Theme Preview & Save**: Preview theme screenshots directly from the plugin's README, and save themes directly to your local Theme Library.
-- **Incompatible Plugin Handling**: Plugins that fail to install are automatically added to an exception list (persisted in localStorage with 30-day TTL). Greyed-out Install buttons with a manual "Recheck" option to test for newer, compatible versions.
-- **One-Click Installs**: Install community plugins directly from the Discover tab without copy-pasting code.
-- **Smart Updates**: Background update checker runs twice daily and notifies you when new versions are available. Update a single plugin with one click or use "Update All" to batch apply all pending updates.
-
-### Backup & Restore (GitHub-only)
-
-- **Automatic backups**: every plugin/collection/theme change commits a full workspace
-  snapshot to the configured GitHub repository. No manual backup, no files on disk.
-- **Point-in-time restore**: Settings → Restore from GitHub lists the backup commit
-  history; pick a date/time, review, Import (optionally Full Override, which deletes
-  anything not in the chosen backup).
-- **Theme Library**: A dedicated tab to manage your saved themes. Add themes via GitHub URL (with smart CSS detection) or manual paste. Export CSS merges saved themes into a single stylesheet for Thymer's theme editor.
-
-### Security & Reliability
-
-- **XSS Prevention**: All user-controlled strings are HTML-escaped before DOM injection.
-- **JS Validation**: Pre-save validation catches ES module syntax and syntax errors before they can crash Thymer's runtime.
-- **Input Validation**: GitHub URL validation, HTTPS-only image rendering, and `rel="noopener noreferrer"` on all external links.
-- **Memory Leak Prevention**: Intervals cleared on unload, blob URLs revoked, and dangling modals cleaned up.
-- **Rate Limit Awareness**: Background update checker adds delays between requests and bails early on GitHub rate limits.
+- **Install from GitHub** by pasting a repo URL. Discovers `plugin.json` /
+  `plugin.js` / CSS automatically, including subdirectories, SDK examples,
+  extensionless Thymer exports, and other naming conventions.
+- **Update checks** run daily in the background (rate-limit aware) and badge
+  the statusbar icon. An update is offered only when the remote version is
+  **strictly newer** than the installed one — a GitHub repo that lags your
+  local copy is reported as such, never offered as a downgrade. **Reinstall**
+  is the explicit force-overwrite. Local plugins can be linked (🔗) to a repo
+  to enable tracking.
+- **Self-updating**: after the initial manual install, the manager updates
+  itself like any other plugin, preserving your settings.
+- **Panel behavior**: opens in the currently focused panel (full width), not a
+  new split.
+- **Failed installs** land on an incompatible list (30-day TTL) with a manual
+  Recheck button.
+- **Hardening**: HTML-escaping of all user-controlled strings before DOM
+  injection, pre-save JS validation (catches module syntax/errors before they
+  can crash Thymer), GitHub-URL and HTTPS-only validation, cleanup of
+  intervals/modals/blob URLs on unload.
 
 ## Installation
 
-Since this plugin manages other plugins, it must be installed manually first.
+The manager manages other plugins, so bootstrap it manually once:
 
 1. Create a new **Plugin** in your Thymer workspace.
-2. Paste the contents of `plugin.js` into the **Custom Code** section of the plugin.
-3. Paste the contents of `plugin.json` into the **Config** section.
-4. Paste the contents of `styles.css` into the **Custom CSS** section.
-5. Save the plugin. A new **Plugins Manager** icon (📦) will appear in your statusbar.
+2. Paste `plugin.js` into **Custom Code**, `plugin.json` into **Config**, and
+   `plugin.css` into **Custom CSS**.
+3. Save. A 📦 icon appears in the statusbar; open it from there or via the
+   command palette (**Cmd+P → Open Plugins Manager**).
 
-### Self-Update
+Future updates arrive through the manager itself. If the source link is ever
+lost, click 🔗 on the Plugins Manager card and enter
+`https://github.com/jkroes/thymer-plugins-manager`.
 
-After initial manual install, the PluginsManager will get future updates from its GitHub repo.  If the repo needs to be reset, you can manually enter the URL following these steps:
+## Backup & restore (GitHub-only)
 
-1. Open Plugins Manager → **Plugins** tab.
-2. Click the 🔗 link icon on the Plugins Manager card.
-3. Enter: `https://github.com/ahpatel/thymer-plugins-manager`
-4. The update button (↻) will appear — click it to pull the latest version.
+Backups are automatic and always on — there is no manual backup button, no
+file downloads, and no folder picker (all removed from upstream).
 
-## Usage
-
-Click the **Plugins Manager** icon in your left statusbar or from the Command Palette (Cmd+P) to open the dashboard.
-
-### Tabs
-
-| Tab | Purpose |
-| ----- | --------- |
-| **Plugins** | Manage workspace-level app plugins. Install, update, delete. |
-| **Collections** | Manage collection-specific plugins. Same actions as Plugins. |
-| **Themes** | Manage your Theme Library. Save themes from GitHub URLs or manual paste; Export CSS produces a combined stylesheet. |
-| **Discover** | Browse community plugins and themes. Search, filter, install, or preview. |
-| **Settings** | Configure GitHub PAT, community repo URLs, and the GitHub backup repository. |
-
-### Settings
-
-- **GitHub PAT** (Optional): Provide a Personal Access Token to increase API rate limits when managing many plugins or allow you to pull from your private repos.
-- **Community Repositories**: List of raw Markdown URLs pointing to community plugin/theme directories.
-- **GitHub Backup**: repository / branch / file path for automatic backups (always on; see below).
-
-## Browser Compatibility
-
-Backups use plain `fetch` against the GitHub API, so they work in every runtime — the Thymer desktop app included.
+- **Setup**: in Settings, set the backup repository (`owner/name`), branch,
+  and file path, plus a PAT with **read/write Contents** permission on that
+  repository. Keep the repository **private** — backups contain full plugin
+  configurations.
+- **What's backed up**: every plugin/collection/theme change commits a full
+  snapshot — global plugin code + config, every collection's schema/code/CSS
+  (topologically sorted so record relations restore in order), the Theme
+  Library, and manager settings. Commits are debounced and skipped when
+  content is identical (which also dedupes multiple open clients). **Not**
+  included: the records inside collections (use Thymer's own export) and the
+  PAT, which is redacted from every payload.
+- **Restore**: Settings → **Restore from GitHub** lists the backup file's
+  commit history (paged 50 at a time); pick a point in time, review, and
+  import — optionally **Full Override**, which deletes anything not in the
+  chosen backup. After a workspace rewind, re-paste the PAT once, then
+  restore.
 
 ## Development
 
-To modify the Plugins Manager itself:
-
-```bash
-cd thymer-plugins-manager
-npm install
-npm run build
-```
-
-This bundles `plugin.js` via esbuild into the `dist/` directory.
-
-## GitHub Backup (fork feature)
-
-GitHub push/pull is the primary workspace backup/restore mechanism in this fork,
-because it works everywhere the plugin runs — including the Thymer desktop app,
-where the File System Access folder picker is not wired up by the Electron shell.
-
-- **Settings → GitHub Backup**: set repository (`owner/name`), branch, and file path.
-  The PAT (Settings → GitHub Access) needs **read/write Contents** permission on that
-  repository. Keep the repository **private** — backups contain full plugin configs.
-- **Auto-push (always on)**: every plugin/collection/theme change commits the backup
-  JSON to GitHub (debounced; identical content is skipped, which also dedupes multiple
-  open clients). Git history doubles as backup versioning — every backup is a commit.
-  There is no toggle, no manual backup button, and no file-based backup/restore —
-  GitHub is the only pathway (this fork removed the folder-picker/download code).
-- **Restore from GitHub**: lists the backup file's commit history so you pick a
-  day/time to restore from (latest first, "Load older…" pages back 50 at a time
-  through the full history), then prefills the normal restore dialog
-  (Full Override works there; it now uses a two-click confirm because
-  `window.confirm` is suppressed in the plugin sandbox).
-- **Credential hygiene**: `custom.githubPat` is redacted from backup payloads, so the
-  token never leaves the workspace inside a backup artifact. After a rewind or on a
-  fresh workspace, re-paste the PAT once, then Restore from GitHub.
-- Upstream's folder-picker/auto-download destinations, manual "Backup Workspace"
-  button, backup-file upload, per-tab "Backup/Restore Plugins/Collections" buttons,
-  and the JSON/URL export dialog were all removed in this fork — install/update/delete
-  happen in the tabs; backup/restore exists only as Settings → GitHub.
-
----
-
-## Fork notice
-
-This is a permanently diverged fork of
-[ahpatel/thymer-plugins-manager](https://github.com/ahpatel/thymer-plugins-manager)
-(v1.4.0), owned by @jkroes. It does not track upstream. `__source_repo` points at
-this repo so the manager's self-update mechanism pulls from here, not upstream.
-
-Planned divergence: GitHub push/pull as the primary workspace backup/restore
-mechanism (GitHub Contents API; works in the desktop app where the File System
-Access folder picker does not).
+The plugin is plain source at the repo root (`plugin.js`, `plugin.json`,
+`plugin.css`) — no build step. To ship a change: edit, **bump `version` in
+`plugin.json`**, commit, and push; then apply the update from the manager in
+Thymer. The updater only offers strictly newer versions, so an unpushed
+version bump just means the manual check reports "ahead of GitHub" until you
+push.
