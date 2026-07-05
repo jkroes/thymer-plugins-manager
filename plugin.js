@@ -64,24 +64,14 @@ class Plugin extends AppPlugin {
         this._statusBarItem = this.ui.addStatusBarItem({
             icon: "box",
             tooltip: "Plugins Manager",
-            onClick: async () => {
-                const newPanel = await this.ui.createPanel();
-                if (newPanel) {
-                    newPanel.navigateToCustomType("plugin-manager-panel");
-                }
-            }
+            onClick: () => this._openManagerPanel()
         });
 
         // Add a command palette command to launch it
         this.ui.addCommandPaletteCommand({
             label: "Open Plugins Manager",
             icon: "box",
-            onSelected: async () => {
-                const newPanel = await this.ui.createPanel();
-                if (newPanel) {
-                    newPanel.navigateToCustomType("plugin-manager-panel");
-                }
-            }
+            onSelected: () => this._openManagerPanel()
         });
 
         // Check if we just updated ourselves
@@ -89,10 +79,7 @@ class Plugin extends AppPlugin {
             localStorage.removeItem('pm_self_update_pending');
             setTimeout(async () => {
                 try {
-                    const newPanel = await this.ui.createPanel();
-                    if (newPanel) {
-                        newPanel.navigateToCustomType("plugin-manager-panel");
-                    }
+                    await this._openManagerPanel();
                 } catch (e) { console.error('Failed to reopen panel after self-update', e); }
             }, 800);
         }
@@ -126,6 +113,21 @@ class Plugin extends AppPlugin {
             try { this._tooltipCleanup(); } catch (e) { }
             this._tooltipCleanup = null;
         }
+    }
+
+    /**
+     * Open the manager in the currently focused panel (full width) instead of
+     * spawning a new split. Falls back to a new panel when there is no usable
+     * active panel (e.g. focus is in the sidebar).
+     */
+    async _openManagerPanel() {
+        let panel = null;
+        try {
+            panel = this.ui.getActivePanel();
+            if (panel && panel.isSidebar()) panel = null;
+        } catch (e) { panel = null; }
+        if (!panel) panel = await this.ui.createPanel();
+        if (panel) panel.navigateToCustomType("plugin-manager-panel");
     }
 
     async startAutomatedUpdateChecker() {
@@ -409,6 +411,11 @@ class Plugin extends AppPlugin {
 
         const element = panel.getElement();
         if (element) {
+            // The custom-panel host can size to its content, which makes the
+            // visible width track whichever tab is active. Pin it to the panel.
+            element.style.width = '100%';
+            element.style.maxWidth = 'none';
+            element.style.boxSizing = 'border-box';
             element.innerHTML = html;
             this._populateTabIcons(element);
             this._installInstantTooltips(element);
