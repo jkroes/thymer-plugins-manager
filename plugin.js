@@ -2895,6 +2895,16 @@ class Plugin extends AppPlugin {
             } catch (e) { }
         }
 
+        // Validate inputs BEFORE creating any container — a validation failure after
+        // createGlobalPlugin() orphans an empty "New Global Plugin" record.
+        this._validatePluginJS(jsonConf.name, jsCode);
+
+        // Security: enforce code size limit (500KB)
+        if (jsCode && jsCode.length > 500 * 1024) {
+            throw new Error(`"${jsonConf.name || 'Unknown'}" code exceeds the 500KB size limit.`);
+        }
+
+        let createdContainer = false;
         if (!targetPlugin) {
             if (pType === 'app' || pType === 'global') {
                 targetPlugin = await this.data.createGlobalPlugin();
@@ -2903,10 +2913,8 @@ class Plugin extends AppPlugin {
             }
 
             if (!targetPlugin) throw new Error("Failed to create plugin container in workspace.");
+            createdContainer = true;
         }
-
-        // Validate JS before saving — catch issues that would crash Thymer's runtime
-        this._validatePluginJS(jsonConf.name, jsCode);
 
         // Security: sanitize config to only keep expected fields
         const sanitizedConf = this._sanitizePluginConfig(jsonConf, { allowCustom: trustedConfig, preserveUnknownKeys: trustedConfig });
@@ -2914,42 +2922,45 @@ class Plugin extends AppPlugin {
             sanitizedConf.custom = this._cloneJsonValue(existingConf.custom);
         }
 
-        // Security: enforce code size limit (500KB)
-        if (jsCode && jsCode.length > 500 * 1024) {
-            throw new Error(`"${jsonConf.name || 'Unknown'}" code exceeds the 500KB size limit.`);
-        }
-
-        // For collections: remap filter_colguid for link-to-record fields before saving
-        const pTypeNorm = (jsonConf.type || '').toLowerCase();
-        if (pTypeNorm === 'collection' && Array.isArray(sanitizedConf.fields) && sanitizedConf.fields.length > 0) {
-            const hasColNames = sanitizedConf.fields.some(f => f.filter_colname);
-            if (hasColNames) {
-                const allCollections = await this.data.getAllCollections();
-                const nameToGuid = {};
-                for (const tc of allCollections) {
-                    try {
-                        const tc_conf = tc.getConfiguration();
-                        const tc_guid = tc.getGuid ? tc.getGuid() : null;
-                        if (tc_guid && tc_conf && tc_conf.name) nameToGuid[tc_conf.name] = tc_guid;
-                    } catch (e) { }
-                }
-                sanitizedConf.fields = sanitizedConf.fields.map(f => {
-                    if (f.filter_colguid && nameToGuid[f.filter_colname]) {
-                        const { filter_colname, ...rest } = f;
-                        return { ...rest, filter_colguid: nameToGuid[f.filter_colname] };
+        try {
+            // For collections: remap filter_colguid for link-to-record fields before saving
+            const pTypeNorm = (jsonConf.type || '').toLowerCase();
+            if (pTypeNorm === 'collection' && Array.isArray(sanitizedConf.fields) && sanitizedConf.fields.length > 0) {
+                const hasColNames = sanitizedConf.fields.some(f => f.filter_colname);
+                if (hasColNames) {
+                    const allCollections = await this.data.getAllCollections();
+                    const nameToGuid = {};
+                    for (const tc of allCollections) {
+                        try {
+                            const tc_conf = tc.getConfiguration();
+                            const tc_guid = tc.getGuid ? tc.getGuid() : null;
+                            if (tc_guid && tc_conf && tc_conf.name) nameToGuid[tc_conf.name] = tc_guid;
+                        } catch (e) { }
                     }
-                    const { filter_colname, ...rest } = f;
-                    return rest;
-                });
+                    sanitizedConf.fields = sanitizedConf.fields.map(f => {
+                        if (f.filter_colguid && nameToGuid[f.filter_colname]) {
+                            const { filter_colname, ...rest } = f;
+                            return { ...rest, filter_colguid: nameToGuid[f.filter_colname] };
+                        }
+                        const { filter_colname, ...rest } = f;
+                        return rest;
+                    });
+                }
             }
-        }
 
-        await targetPlugin.savePlugin(sanitizedConf, jsCode);
+            await targetPlugin.savePlugin(sanitizedConf, jsCode);
 
-        // Security: sanitize and save CSS if provided
-        if (cssCode) {
-            const sanitizedCSS = this._sanitizeCSS(cssCode);
-            await targetPlugin.saveCSS(sanitizedCSS);
+            // Security: sanitize and save CSS if provided
+            if (cssCode) {
+                const sanitizedCSS = this._sanitizeCSS(cssCode);
+                await targetPlugin.saveCSS(sanitizedCSS);
+            }
+        } catch (e) {
+            // Don't orphan a container we created for this install
+            if (createdContainer) {
+                try { await targetPlugin.trashPlugin(); } catch (_) { }
+            }
+            throw e;
         }
 
         this._autoExport(); // fire-and-forget

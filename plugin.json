@@ -3,7 +3,7 @@
     "type": "plugin",
     "name": "Plugins Manager",
     "icon": "box",
-    "version": "1.6.1-fork.8",
+    "version": "1.6.1-fork.9",
     "__source_repo": "https://github.com/jkroes/thymer-plugins-manager",
     "description": "Install, update, import and export Thymer plugins. Fork: GitHub-only backup/restore — auto-push on every change, point-in-time restore from commit history.",
     "permissions": [
