@@ -2373,9 +2373,27 @@ class Plugin extends AppPlugin {
     }
 
     /** Validate JS code is compatible with Thymer's runtime before saving */
+    _looksLikeEsModule(jsCode) {
+        return /^\s*import\s+/m.test(jsCode) || /^\s*export\s+/m.test(jsCode);
+    }
+
+    // SDK-built repos keep ES-module source at plugin.js and the installable IIFE
+    // bundle at dist/plugin.js. When a fetched JS file is module source, swap in the
+    // repo's dist bundle if it has one; otherwise return the original (validation
+    // will surface the ES-module error).
+    async _preferDistBundle(owner, repo, branch, prefix, jsName, jsCode) {
+        if (!this._looksLikeEsModule(jsCode) || jsName.startsWith('dist/')) return { js: jsCode, jsName };
+        const distName = `dist/${jsName}`;
+        try {
+            const distJs = await this._fetchGithubFile(owner, repo, branch, `${prefix}${distName}`);
+            if (!this._looksLikeEsModule(distJs)) return { js: distJs, jsName: distName };
+        } catch (e) { /* no dist bundle */ }
+        return { js: jsCode, jsName };
+    }
+
     _validatePluginJS(name, jsCode) {
         if (!jsCode) return;
-        if (/^\s*import\s+/m.test(jsCode) || /^\s*export\s+/m.test(jsCode)) {
+        if (this._looksLikeEsModule(jsCode)) {
             throw new Error(`"${name || 'Unknown'}" uses ES module syntax (import/export) which is not compatible with Thymer's plugin system.`);
         }
         // Security: removed new Function(jsCode) — it compiles arbitrary code pre-install.
@@ -2662,9 +2680,10 @@ class Plugin extends AppPlugin {
         if (sourceFiles && sourceFiles.branch && sourceFiles.json && sourceFiles.js) {
             try {
                 const pluginJson = JSON.parse(await this._fetchGithubFile(owner, repo, sourceFiles.branch, `${prefix}${sourceFiles.json}`));
-                const pluginJs = await this._fetchGithubFile(owner, repo, sourceFiles.branch, `${prefix}${sourceFiles.js}`);
+                const fetchedJs = await this._fetchGithubFile(owner, repo, sourceFiles.branch, `${prefix}${sourceFiles.js}`);
+                const { js: pluginJs, jsName: resolvedJsName } = await this._preferDistBundle(owner, repo, sourceFiles.branch, prefix, sourceFiles.js, fetchedJs);
                 pluginJson.__source_repo = url;
-                pluginJson.__source_files = buildSourceFiles(sourceFiles.branch, sourceFiles.json, sourceFiles.js, sourceFiles.css);
+                pluginJson.__source_files = buildSourceFiles(sourceFiles.branch, sourceFiles.json, resolvedJsName, sourceFiles.css);
                 const result = { json: pluginJson, js: pluginJs };
                 if (sourceFiles.css) {
                     try {
@@ -2702,7 +2721,8 @@ class Plugin extends AppPlugin {
             // Try each JS candidate until one responds OK
             for (const jsName of jsCandidates) {
                 try {
-                    const pluginJs = await this._fetchGithubFile(owner, repo, branch, `${prefix}${jsName}`);
+                    const fetchedJs = await this._fetchGithubFile(owner, repo, branch, `${prefix}${jsName}`);
+                    const { js: pluginJs, jsName: resolvedJsName } = await this._preferDistBundle(owner, repo, branch, prefix, jsName, fetchedJs);
                     foundJson.__source_repo = url;
 
                     // Also try to grab CSS while we're here
@@ -2718,7 +2738,7 @@ class Plugin extends AppPlugin {
                     }
 
                     // Cache the discovered filenames for future fetches
-                    foundJson.__source_files = buildSourceFiles(branch, foundJsonName, jsName, foundCssName);
+                    foundJson.__source_files = buildSourceFiles(branch, foundJsonName, resolvedJsName, foundCssName);
                     return result;
                 } catch (e) { /* try next */ }
             }
@@ -2755,18 +2775,21 @@ class Plugin extends AppPlugin {
 
         const jsRes = await fetch(jsFile.download_url);
         if (!jsRes.ok) throw new Error(`Failed to download ${jsFile.name}`);
-        const pluginJs = await jsRes.text();
+        const fetchedJs = await jsRes.text();
+
+        // Detect branch from download_url (also needed for the dist-bundle probe)
+        const branchMatch = jsonFile.download_url && jsonFile.download_url.match(/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/([^/]+)\//);
+        const branch = branchMatch ? branchMatch[1] : 'main';
+        const { js: pluginJs, jsName: resolvedJsName } = await this._preferDistBundle(owner, repo, branch, prefix, jsFile.name, fetchedJs);
 
         // Optionally grab CSS
         const cssFile = this._findFileByRole(files, 'css');
 
         pluginJson.__source_repo = url;
-        // Cache discovered filenames — detect branch from download_url
-        const branchMatch = jsonFile.download_url && jsonFile.download_url.match(/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/([^/]+)\//);
         pluginJson.__source_files = buildSourceFiles(
-            branchMatch ? branchMatch[1] : 'main',
+            branch,
             jsonFile.name,
-            jsFile.name,
+            resolvedJsName,
             cssFile ? cssFile.name : null
         );
 
