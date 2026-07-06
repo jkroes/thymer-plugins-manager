@@ -2904,6 +2904,17 @@ class Plugin extends AppPlugin {
             throw new Error(`"${jsonConf.name || 'Unknown'}" code exceeds the 500KB size limit.`);
         }
 
+        // Security: sanitize config to only keep expected fields. `custom` (the plugin's
+        // own settings) is taken from the repo on FRESH installs only — it's just the
+        // plugin's declared defaults, and the Configuration tab is its settings UI. On
+        // updates the user's existing `custom` always wins so a repo can't clobber
+        // saved settings/secrets.
+        const isFreshInstall = !targetPlugin;
+        const sanitizedConf = this._sanitizePluginConfig(jsonConf, { allowCustom: trustedConfig || isFreshInstall, preserveUnknownKeys: trustedConfig });
+        if (existingConf && existingConf.custom !== undefined && (!trustedConfig || jsonConf.custom === undefined)) {
+            sanitizedConf.custom = this._cloneJsonValue(existingConf.custom);
+        }
+
         let createdContainer = false;
         if (!targetPlugin) {
             if (pType === 'app' || pType === 'global') {
@@ -2914,12 +2925,6 @@ class Plugin extends AppPlugin {
 
             if (!targetPlugin) throw new Error("Failed to create plugin container in workspace.");
             createdContainer = true;
-        }
-
-        // Security: sanitize config to only keep expected fields
-        const sanitizedConf = this._sanitizePluginConfig(jsonConf, { allowCustom: trustedConfig, preserveUnknownKeys: trustedConfig });
-        if (existingConf && existingConf.custom !== undefined && (!trustedConfig || jsonConf.custom === undefined)) {
-            sanitizedConf.custom = this._cloneJsonValue(existingConf.custom);
         }
 
         try {
