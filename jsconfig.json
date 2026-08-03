@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+        "checkJs": true,
+        "allowJs": true,
+        "strict": true,
+        "target": "ES2022",
+        "module": "ES2022",
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true
+    },
+    "include": [
+        "*.js",
+        "sdk/types.d.ts",
+        "sdk/asset-types.d.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "examples",
+        "sdk/node_modules"
+    ]
+}

@@ -1,0 +1,12 @@
+# --- linked into the shared cache, NOT committed (run ./setup.sh to materialize) ---
+/sdk
+/bin/thymercli
+/examples
+
+# deps / build output
+node_modules/
+dist/
+
+# browser-automation output / OS
+.playwright-mcp/
+.DS_Store
