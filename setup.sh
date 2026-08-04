@@ -33,3 +33,6 @@ link "$CACHE/examples"     "examples"
 echo
 echo "Note: the Thymer MCP server is the desktop app's built-in one on :13100"
 echo "(enable: app → Settings → MCP (AI Agents) → Read & Write). bin/thymercli is the CLI client."
+
+# Route git hooks through the committed hooks/ dir (pre-push keeps dist/ fresh).
+if [ -d "$ROOT/.git" ]; then git -C "$ROOT" config core.hooksPath hooks; fi

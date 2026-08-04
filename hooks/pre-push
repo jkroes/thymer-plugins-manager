@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Refuse to push a stale dist bundle. Rebuilds and compares against HEAD, so an
+# edited plugin.js whose bundle was never rebuilt/committed can't reach GitHub —
+# the committed dist/plugin.js is the only installable form of this plugin.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+if [ ! -x sdk/node_modules/.bin/esbuild ]; then
+  echo "pre-push: esbuild not linked (run ./setup.sh) — skipping dist freshness check" >&2
+  exit 0
+fi
+./build.sh . >/dev/null
+if ! git diff --quiet HEAD -- dist/plugin.js; then
+  echo "pre-push: dist/plugin.js does not match the committed source." >&2
+  echo "  Rebuild and commit it:  ./build.sh . && git add dist/plugin.js" >&2
+  echo "  (If plugin.js has uncommitted edits, commit or stash them first.)" >&2
+  exit 1
+fi
