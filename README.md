@@ -47,8 +47,9 @@ desktop app, where the File System Access folder picker is not wired up.
 The manager manages other plugins, so bootstrap it manually once:
 
 1. Create a new **Plugin** in your Thymer workspace.
-2. Paste `plugin.js` into **Custom Code**, `plugin.json` into **Config**, and
-   `plugin.css` into **Custom CSS**.
+2. Paste `dist/plugin.js` into **Custom Code**, `plugin.json` into **Config**,
+   and `plugin.css` into **Custom CSS**. (`plugin.js` is module-style source —
+   Thymer's editor rejects its `export`; rebuild the bundle with `./build.sh .`.)
 3. Save. A 📦 icon appears in the statusbar; open it from there or via the
    command palette (**Cmd+P → Open Plugins Manager**).
 

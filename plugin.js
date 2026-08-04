@@ -1,4 +1,5 @@
-class Plugin extends AppPlugin {
+/// <reference path="./sdk/types.d.ts" />
+export class Plugin extends AppPlugin {
 
     onLoad() {
         // We load PAT from plugin configuration, removing from cleartext localstorage if found
